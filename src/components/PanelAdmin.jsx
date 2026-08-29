@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { ArrowLeft, BellRing, Crown, Download, LogIn, LogOut, MapPin, Pencil, Plus, QrCode, Radio, Settings2, ShieldAlert, Trash2, UserCheck } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { hasSupabase, supabase } from '../lib/supabaseClient'
-import { deleteCatalogItem, finishAttention, loadBoxes, loadDetailedReport, loadDoctors, loadReports, loadSpecialties, listShifts, saveCatalogItem, saveShift, triggerSupervisorNotice, updateBoxStatus } from '../lib/dataService'
+import { deleteCatalogItem, finishAttention, loadBoxes, loadDetailedReport, loadDoctors, loadReports, loadSpecialties, listShifts, saveCatalogItem, saveShift, startAttention, triggerSupervisorNotice, updateBoxStatus } from '../lib/dataService'
 import FiltroEspecialidad from './FiltroEspecialidad'
 import QrModal from './QrModal'
 
@@ -66,6 +66,29 @@ export default function PanelAdmin() {
       setMessage('Estado actualizado')
     } catch {
       setMessage('No se pudo actualizar el estado')
+    }
+  }
+
+  async function assignDoctor(box, doctorId) {
+    if (!doctorId) return
+    try {
+      await startAttention(box.id, doctorId)
+      const refreshed = await loadBoxes()
+      setBoxes(refreshed)
+      setMessage('Profesional asignado al box')
+    } catch (err) {
+      setMessage(err.message || 'No se pudo asignar el profesional')
+    }
+  }
+
+  async function releaseBox(box) {
+    try {
+      await finishAttention(box.atencion?.id || `demo-active-${box.id}`)
+      const refreshed = await loadBoxes()
+      setBoxes(refreshed)
+      setMessage('Box liberado')
+    } catch (err) {
+      setMessage(err.message || 'No se pudo liberar el box')
     }
   }
 
@@ -242,36 +265,65 @@ export default function PanelAdmin() {
             <FiltroEspecialidad value={filter} onChange={setFilter} specialties={names} />
           </div>
           <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="grid grid-cols-[1.2fr_1fr_0.7fr_1fr_0.8fr] gap-4 border-b border-slate-200 bg-slate-50 px-5 py-4 text-xs font-black uppercase tracking-wider text-slate-500">
+            <div className="grid grid-cols-[1.2fr_1fr_0.7fr_1.4fr_1fr_0.8fr] gap-4 border-b border-slate-200 bg-slate-50 px-5 py-4 text-xs font-black uppercase tracking-wider text-slate-500">
               <span>Box</span>
               <span>Especialidad</span>
               <span>Piso</span>
+              <span>Profesional</span>
               <span>Estado</span>
               <span>Etiqueta QR</span>
             </div>
-            {visible.map((box) => (
-              <div key={box.id} className="grid grid-cols-[1.2fr_1fr_0.7fr_1fr_0.8fr] items-center gap-4 border-b border-slate-100 px-5 py-4 last:border-0">
-                <div className="font-black">
-                  {box.numero}
-                  <span className="block text-xs font-medium text-slate-400">{box.medico || 'Sin profesional'}</span>
+            {visible.map((box) => {
+              const allowedDoctors = doctors.filter((doc) => {
+                if (box.especialidad_id && doc.especialidad_id) return doc.especialidad_id === box.especialidad_id
+                const docSpec = doc.especialidad_nombre || doc.especialidades?.nombre
+                return docSpec && box.especialidad?.nombre && docSpec.toLowerCase() === box.especialidad.nombre.toLowerCase()
+              })
+              return (
+                <div key={box.id} className="grid grid-cols-[1.2fr_1fr_0.7fr_1.4fr_1fr_0.8fr] items-center gap-4 border-b border-slate-100 px-5 py-4 last:border-0">
+                  <div className="font-black">
+                    {box.numero}
+                    <span className="block text-xs font-medium text-slate-400">{box.medico || 'Sin profesional'}</span>
+                  </div>
+                  <span className="text-sm font-semibold text-slate-600">{box.especialidad?.nombre}</span>
+                  <span className="text-sm text-slate-500">{box.piso || '-'}</span>
+                  {box.estado === 'en_atencion' ? (
+                    <button
+                      onClick={() => releaseBox(box)}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 hover:bg-rose-100"
+                    >
+                      Liberar Box
+                    </button>
+                  ) : (
+                    <select
+                      defaultValue=""
+                      onChange={(e) => assignDoctor(box, e.target.value)}
+                      className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-bold"
+                    >
+                      <option value="">-- Asignar profesional --</option>
+                      {allowedDoctors.map((doc) => (
+                        <option key={doc.id} value={doc.id}>
+                          {doc.nombre}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  <select value={box.estado} onChange={(e) => changeStatus(box.id, e.target.value)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-bold capitalize">
+                    {statuses.map((status) => (
+                      <option key={status} value={status}>
+                        {status.replace('_', ' ')}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={() => setActiveQrBox(box)}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-teal-50 hover:text-teal-800 hover:border-teal-300"
+                  >
+                    <QrCode size={14} /> Imprimir QR
+                  </button>
                 </div>
-                <span className="text-sm font-semibold text-slate-600">{box.especialidad?.nombre}</span>
-                <span className="text-sm text-slate-500">{box.piso || '-'}</span>
-                <select value={box.estado} onChange={(e) => changeStatus(box.id, e.target.value)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-bold capitalize">
-                  {statuses.map((status) => (
-                    <option key={status} value={status}>
-                      {status.replace('_', ' ')}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  onClick={() => setActiveQrBox(box)}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-teal-50 hover:text-teal-800 hover:border-teal-300"
-                >
-                  <QrCode size={14} /> Imprimir QR
-                </button>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </section>
       )}

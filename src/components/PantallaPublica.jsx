@@ -306,7 +306,6 @@ export default function PantallaPublica() {
                       proximoMedico={box.proximoMedico}
                       piso={box.piso}
                       isDarkMode={isDarkMode}
-                      onClick={() => setActiveModalBox(box)}
                     />
                   </div>
                 ))}
@@ -314,15 +313,6 @@ export default function PantallaPublica() {
             </div>
           ))}
         </section>
-      )}
-
-      {/* Quick Box Assign / Release Modal */}
-      {activeModalBox && (
-        <QuickBoxModal
-          box={activeModalBox}
-          onClose={() => setActiveModalBox(null)}
-          onRefresh={reloadData}
-        />
       )}
 
       {/* QR Code Printable Sticker Modal */}
