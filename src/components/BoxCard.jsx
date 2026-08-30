@@ -3,25 +3,28 @@ import { Activity, CalendarClock, DoorOpen, MousePointerClick, Stethoscope, User
 
 const states = {
   disponible: {
-    label: 'Disponible',
-    icon: DoorOpen,
-    lightClass: 'border-slate-200 bg-white text-slate-900 shadow-xs hover:border-slate-400',
-    darkClass: 'border-slate-800 bg-slate-900 text-slate-100 hover:border-slate-600',
+    label: 'DISPONIBLE',
+    badgeClass: 'bg-emerald-600 text-white border-emerald-700 shadow-sm',
+    lightClass: 'border-emerald-300 bg-white text-slate-900 shadow-xs hover:border-emerald-500 hover:shadow-md',
+    darkClass: 'border-emerald-800/80 bg-slate-900 text-slate-100 hover:border-emerald-500',
     dot: 'bg-emerald-500',
+    dotGlow: 'bg-emerald-400 animate-pulse',
   },
   en_atencion: {
-    label: 'En atención',
-    icon: Activity,
-    lightClass: 'border-teal-500/30 bg-teal-50/70 text-slate-900 shadow-sm hover:border-teal-500',
-    darkClass: 'border-teal-700/60 bg-teal-950/40 text-teal-100 hover:border-teal-500',
-    dot: 'bg-teal-500',
+    label: 'OCUPADO / EN ATENCIÓN',
+    badgeClass: 'bg-rose-600 text-white border-rose-700 shadow-sm animate-pulse',
+    lightClass: 'border-rose-300 bg-rose-50/40 text-slate-900 shadow-sm hover:border-rose-500 hover:shadow-md',
+    darkClass: 'border-rose-800/80 bg-rose-950/30 text-rose-100 hover:border-rose-500',
+    dot: 'bg-rose-500',
+    dotGlow: 'bg-rose-400 animate-ping',
   },
   fuera_servicio: {
-    label: 'Fuera de servicio',
-    icon: Activity,
+    label: 'FUERA DE SERVICIO',
+    badgeClass: 'bg-slate-500 text-white border-slate-600',
     lightClass: 'border-slate-300 bg-slate-100 text-slate-700 hover:border-slate-400',
     darkClass: 'border-slate-700 bg-slate-900/60 text-slate-300 hover:border-slate-500',
     dot: 'bg-slate-400',
+    dotGlow: 'bg-slate-300',
   },
 }
 
@@ -82,17 +85,17 @@ export default function BoxCard({
             </div>
             <h3 className="mt-1 text-4xl font-black tracking-tight">{numero}</h3>
           </div>
+
           <div className="flex items-center gap-2">
-            {onClick && (
-              <span className={`hidden items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-black uppercase shadow-xs group-hover:inline-flex ${isDarkMode ? 'bg-slate-800 text-slate-200' : 'bg-white/80 text-slate-700'}`}>
-                <MousePointerClick size={12} /> Registrar Uso
-              </span>
-            )}
-            <Icon size={27} strokeWidth={2.2} aria-hidden="true" />
+            {/* BADGE DE ESTADO GIGANTE Y VISIBLE: DISPONIBLE vs OCUPADO */}
+            <span className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-black uppercase tracking-wider ${current.badgeClass}`}>
+              <span className={`h-2 w-2 rounded-full bg-white`} />
+              {estado === 'en_atencion' ? 'OCUPADO' : estado === 'disponible' ? 'DISPONIBLE' : 'FUERA DE SERVICIO'}
+            </span>
           </div>
         </div>
 
-        <div className="mt-5 border-t border-current/10 pt-4 pl-2">
+        <div className="mt-4 border-t border-current/10 pt-4 pl-2">
           <p className="text-xs font-black uppercase tracking-wider opacity-60">{especialidad}</p>
 
           {/* Equipment Badges (Eptura Engage Style) */}
@@ -107,28 +110,34 @@ export default function BoxCard({
           )}
 
           {estado === 'disponible' ? (
-            <div className="mt-4">
-              <p className="text-xl font-bold uppercase tracking-wide opacity-50">Disponible</p>
+            <div className="mt-3">
               {medico ? (
-                <p className="mt-2 flex items-center gap-1.5 text-xs font-black text-emerald-700">
-                  <UserRound size={14} className="shrink-0 text-emerald-600" />
-                  Profesional en sala: {medico} (Esperando paciente)
-                </p>
+                <div className="rounded-xl bg-emerald-500/10 p-3 border border-emerald-500/30">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-emerald-800 block">Profesional en Sala (Listo para atender):</span>
+                  <p className="flex items-center gap-2 text-base font-black text-emerald-950 mt-0.5">
+                    <UserRound size={17} className="text-emerald-700" />
+                    {medico}
+                  </p>
+                  <span className="text-[11px] font-bold text-emerald-700 mt-1 block">🟢 Sala Libre · Esperando llamado de paciente</span>
+                </div>
               ) : proximoMedico ? (
                 <p className="mt-2 flex items-center gap-1.5 text-xs font-extrabold opacity-75">
                   <CalendarClock size={13} className="shrink-0 text-teal-600" />
                   Próximo profesional: {proximoMedico}
                 </p>
-              ) : null}
+              ) : (
+                <p className="text-sm font-black text-emerald-700 uppercase mt-2">✓ Sala libre para asignación</p>
+              )}
             </div>
           ) : (
             <div className="mt-3">
-              <div className="rounded-xl bg-teal-600/10 p-2.5 border border-teal-600/20">
-                <span className="text-[10px] font-black uppercase tracking-wider text-teal-700 block">Profesional Asignado:</span>
-                <p className="flex items-center gap-2 text-lg font-black mt-0.5">
-                  <UserRound size={18} className="text-teal-600" />
+              <div className="rounded-xl bg-rose-500/10 p-3 border border-rose-500/30">
+                <span className="text-[10px] font-black uppercase tracking-wider text-rose-800 block">Consulta en Curso con:</span>
+                <p className="flex items-center gap-2 text-base font-black text-rose-950 mt-0.5">
+                  <UserRound size={17} className="text-rose-700" />
                   {medico || 'Profesional asignado'}
                 </p>
+                <span className="text-[11px] font-black text-rose-700 mt-1 block">🔴 Paciente en atención dentro de sala</span>
               </div>
               <div className="mt-2 flex items-center gap-2">
                 <p className="text-xs font-bold opacity-70">
@@ -150,10 +159,10 @@ export default function BoxCard({
         </div>
       </div>
 
-      <div className="mt-5 border-t border-current/10 pt-3 pl-2 flex items-center justify-between">
-        <p className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-extrabold uppercase tracking-wide ${isDarkMode ? 'bg-black/40' : 'bg-white/60'}`}>
+      <div className="mt-4 border-t border-current/10 pt-3 pl-2 flex items-center justify-between">
+        <p className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-extrabold uppercase tracking-wide ${isDarkMode ? 'bg-black/40' : 'bg-white/60'}`}>
           <span className={`h-2.5 w-2.5 rounded-full ${current.dot}`} />
-          {estado === 'en_atencion' ? 'Ocupado' : current.label}
+          {estado === 'en_atencion' ? '🔴 OCUPADO' : estado === 'disponible' ? '🟢 DISPONIBLE' : '⚪ FUERA DE SERVICIO'}
         </p>
         {onClick && (
           <span className="text-xs font-extrabold opacity-75 group-hover:underline">
