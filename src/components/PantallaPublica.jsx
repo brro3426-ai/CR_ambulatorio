@@ -188,7 +188,7 @@ export default function PantallaPublica() {
             <MonitorDot size={20} />
             CR Ambulatorio · Tótem TV
           </div>
-          <h1 className="text-4xl font-black tracking-tight md:text-6xl">Disponibilidad de Boxes</h1>
+          <h1 className="text-4xl font-black tracking-tight md:text-6xl">Disponibilidad de Salas</h1>
           <p className={`mt-3 text-base ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
             Consulta externa · {hasSupabase ? 'Conectado a Supabase Realtime' : 'Modo demostración'}
           </p>

@@ -73,7 +73,7 @@ export default function BoxCard({
         <div className="flex items-start justify-between gap-3 pl-2">
           <div>
             <div className="flex items-center gap-2">
-              <p className="text-xs font-bold uppercase tracking-[0.18em] opacity-60">Box</p>
+              <p className="text-xs font-bold uppercase tracking-[0.18em] opacity-60">Sala</p>
               {piso && (
                 <span className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase ${isDarkMode ? 'bg-slate-800 text-slate-300' : 'bg-white/80 text-slate-700'}`}>
                   Piso {piso}

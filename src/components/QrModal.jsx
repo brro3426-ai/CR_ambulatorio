@@ -13,7 +13,7 @@ export default function QrModal({ box, onClose }) {
       <!DOCTYPE html>
       <html>
         <head>
-          <title>Etiqueta QR - Box ${box.numero}</title>
+          <title>Etiqueta QR - Sala ${box.numero}</title>
           <style>
             body { font-family: system-ui, sans-serif; text-align: center; padding: 40px; color: #0f172a; }
             .card { border: 4px solid #0f172a; border-radius: 24px; padding: 32px; max-width: 380px; margin: 0 auto; background: #ffffff; }
@@ -27,9 +27,9 @@ export default function QrModal({ box, onClose }) {
         <body>
           <div class="card">
             <span class="badge">CR Ambulatorio · Piso ${box.piso || '-'}</span>
-            <h1>BOX ${box.numero}</h1>
+            <h1>SALA ${box.numero}</h1>
             <p>${box.especialidad?.nombre || 'Consulta Externa'}</p>
-            <img src="${qrImageUrl}" alt="QR Code Box ${box.numero}" />
+            <img src="${qrImageUrl}" alt="QR Code Sala ${box.numero}" />
             <div class="footer">Escanea para iniciar o finalizar atención</div>
           </div>
           <script>

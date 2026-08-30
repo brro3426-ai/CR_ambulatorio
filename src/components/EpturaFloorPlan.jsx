@@ -100,7 +100,7 @@ export default function EpturaFloorPlan({ boxes, onBoxClick, isDarkMode = false 
 
                       <div>
                         <div className="flex items-center gap-2">
-                          <span className="text-xs font-black uppercase tracking-wider opacity-60">BOX</span>
+                          <span className="text-xs font-black uppercase tracking-wider opacity-60">SALA</span>
                           <span className="rounded bg-black/10 px-1.5 py-0.5 text-[10px] font-extrabold">{box.sector || 'Pasillo'}</span>
                         </div>
                         <h4 className="mt-1 text-3xl font-black">{box.numero}</h4>

@@ -75,7 +75,7 @@ export default function PanelAdmin() {
       await startAttention(box.id, doctorId)
       const refreshed = await loadBoxes()
       setBoxes(refreshed)
-      setMessage('Profesional asignado al box')
+      setMessage('Profesional asignado a la sala')
     } catch (err) {
       setMessage(err.message || 'No se pudo asignar el profesional')
     }
@@ -86,9 +86,9 @@ export default function PanelAdmin() {
       await finishAttention(box.atencion?.id || `demo-active-${box.id}`)
       const refreshed = await loadBoxes()
       setBoxes(refreshed)
-      setMessage('Box liberado')
+      setMessage('Sala liberada')
     } catch (err) {
-      setMessage(err.message || 'No se pudo liberar el box')
+      setMessage(err.message || 'No se pudo liberar la sala')
     }
   }
 
@@ -219,7 +219,7 @@ export default function PanelAdmin() {
             <ArrowLeft size={16} />Pantalla pública
           </Link>
           <h1 className="text-4xl font-black tracking-tight">Gestión de consulta externa</h1>
-          <p className="mt-2 text-slate-500">Boxes médicos, profesionales y etiquetas QR para la puerta.</p>
+          <p className="mt-2 text-slate-500">Salas de atención, profesionales y etiquetas QR para la puerta.</p>
         </div>
         {hasSupabase && (
           <button onClick={() => supabase.auth.signOut()} className="rounded-xl border border-slate-200 bg-white p-3 text-slate-600" title="Cerrar sesión">
@@ -231,7 +231,7 @@ export default function PanelAdmin() {
       <nav className="mx-auto mt-6 flex max-w-7xl gap-2 overflow-x-auto border-b border-slate-200 pb-2">
         {[
           ['supervisora', '👑 Encargada de Piso'],
-          ['boxes', 'Boxes / QR'],
+          ['boxes', 'Salas / QR'],
           ['catalogo', 'Profesionales / Catálogo'],
           ['turnos', 'Turnos'],
           ['reportes', 'Reportes'],
@@ -266,7 +266,7 @@ export default function PanelAdmin() {
           </div>
           <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
             <div className="grid grid-cols-[1.2fr_1fr_0.7fr_1.4fr_1fr_0.8fr] gap-4 border-b border-slate-200 bg-slate-50 px-5 py-4 text-xs font-black uppercase tracking-wider text-slate-500">
-              <span>Box</span>
+              <span>Sala</span>
               <span>Especialidad</span>
               <span>Piso</span>
               <span>Profesional</span>
@@ -282,7 +282,7 @@ export default function PanelAdmin() {
               return (
                 <div key={box.id} className="grid grid-cols-[1.2fr_1fr_0.7fr_1.4fr_1fr_0.8fr] items-center gap-4 border-b border-slate-100 px-5 py-4 last:border-0">
                   <div className="font-black">
-                    {box.numero}
+                    Sala {box.numero}
                     <span className="block text-xs font-medium text-slate-400">{box.medico || 'Sin profesional'}</span>
                   </div>
                   <span className="text-sm font-semibold text-slate-600">{box.especialidad?.nombre}</span>
@@ -292,7 +292,7 @@ export default function PanelAdmin() {
                       onClick={() => releaseBox(box)}
                       className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 hover:bg-rose-100"
                     >
-                      Liberar Box
+                      Liberar Sala
                     </button>
                   ) : (
                     <select
@@ -369,7 +369,7 @@ export default function PanelAdmin() {
                 </label>
 
                 <label className="mt-3 block text-xs font-bold text-slate-500 uppercase">
-                  Especialidad de atención (Restricción de Box):
+                  Especialidad de atención (Restricción de Sala):
                   <select className="mt-1 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 font-semibold text-slate-900" value={form.especialidad_id} onChange={(e) => setForm({ ...form, especialidad_id: e.target.value })} required>
                     <option value="">-- Asignar especialidad obligatoria --</option>
                     {specialties.map((item) => (
