@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ArrowLeft, BarChart3, BellRing, Clock, Crown, Download, HeartPulse, LogIn, LogOut, MapPin, Pencil, Plus, QrCode, Radio, Settings2, ShieldAlert, Sparkles, Trash2, TrendingUp, UserCheck, Zap } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, BarChart3, BellRing, BrainCircuit, Clock, Crown, Download, HeartPulse, LogIn, LogOut, MapPin, Pencil, Plus, QrCode, Radio, Settings2, ShieldAlert, Sparkles, Trash2, TrendingUp, UserCheck, Zap } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { hasSupabase, supabase } from '../lib/supabaseClient'
 import { deleteCatalogItem, finishAttention, getMedicalLeaves, loadBoxes, loadDetailedReport, loadDoctors, loadReports, loadSpecialties, listShifts, reportMedicalLeave, saveCatalogItem, saveShift, startAttention, triggerSupervisorNotice, updateBoxStatus } from '../lib/dataService'
@@ -523,6 +523,43 @@ export default function PanelAdmin() {
                     </div>
                   </div>
                 ))}
+              </div>
+            </div>
+          </div>
+
+          {/* MÓDULO PREDICCIÓN & IA ASISTENTE DE REASIGNACIÓN */}
+          <div className="rounded-3xl border border-indigo-200 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 p-6 md:p-8 text-white shadow-xl">
+            <div className="flex items-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-500 text-slate-950 shadow-md">
+                <BrainCircuit size={26} />
+              </div>
+              <div>
+                <span className="text-xs font-black uppercase tracking-[0.25em] text-indigo-300">Inteligencia Predictiva Hospitalaria</span>
+                <h3 className="text-2xl font-black tracking-tight text-white mt-0.5">Asistente IA de Reasignación Automática</h3>
+              </div>
+            </div>
+
+            <p className="mt-3 text-xs font-semibold text-indigo-200 leading-relaxed max-w-3xl">
+              El motor analiza patrones de demanda por especialidad e inasistencias por licencia para sugerir ajustes automáticos de salas y prevenir cuellos de botella en la atención.
+            </p>
+
+            <div className="mt-6 grid gap-4 md:grid-cols-2">
+              <div className="rounded-2xl bg-white/10 p-4 border border-white/10 backdrop-blur-xs">
+                <div className="flex items-center gap-2 text-amber-300 font-black text-xs uppercase tracking-wider">
+                  <AlertTriangle size={16} /> Predicción de Cuello de Botella (Dermatología)
+                </div>
+                <p className="mt-2 text-xs font-semibold text-slate-200 leading-relaxed">
+                  Se proyecta una sobredemanda de +40% en Dermatología los lunes de 09:00 a 12:00. Se sugiere habilitar la Sala 402 como polivalente.
+                </p>
+              </div>
+
+              <div className="rounded-2xl bg-white/10 p-4 border border-white/10 backdrop-blur-xs">
+                <div className="flex items-center gap-2 text-teal-300 font-black text-xs uppercase tracking-wider">
+                  <Sparkles size={16} /> Reasignación Eficiente ante Licencia
+                </div>
+                <p className="mt-2 text-xs font-semibold text-slate-200 leading-relaxed">
+                  Ante la ausencia por licencia del Dr. Andrés Soto, el sistema sugiere reasignar automáticamente a la Dra. Laura Pérez para cubrir el bloque liberado.
+                </p>
               </div>
             </div>
           </div>
