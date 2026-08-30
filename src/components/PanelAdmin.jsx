@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
-import { ArrowLeft, BellRing, Crown, Download, LogIn, LogOut, MapPin, Pencil, Plus, QrCode, Radio, Settings2, ShieldAlert, Trash2, UserCheck } from 'lucide-react'
+import { ArrowLeft, BellRing, Crown, Download, HeartPulse, LogIn, LogOut, MapPin, Pencil, Plus, QrCode, Radio, Settings2, ShieldAlert, Trash2, UserCheck } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { hasSupabase, supabase } from '../lib/supabaseClient'
-import { deleteCatalogItem, finishAttention, loadBoxes, loadDetailedReport, loadDoctors, loadReports, loadSpecialties, listShifts, saveCatalogItem, saveShift, startAttention, triggerSupervisorNotice, updateBoxStatus } from '../lib/dataService'
+import { deleteCatalogItem, finishAttention, getMedicalLeaves, loadBoxes, loadDetailedReport, loadDoctors, loadReports, loadSpecialties, listShifts, reportMedicalLeave, saveCatalogItem, saveShift, startAttention, triggerSupervisorNotice, updateBoxStatus } from '../lib/dataService'
 import FiltroEspecialidad from './FiltroEspecialidad'
 import QrModal from './QrModal'
 
@@ -545,18 +545,22 @@ function FloorSupervisorManager({ boxes, doctors, onRefresh, onNotify }) {
   const [customNotice, setCustomNotice] = useState('')
   const [targetFloor, setTargetFloor] = useState('Todos')
   const [noticeSent, setNoticeSent] = useState('')
+  const medicalLeaves = getMedicalLeaves()
 
-  // Map each doctor to their current active box location
+  // Map each doctor to their current active box location or leave status
   const roster = doctors.map((doc) => {
     const activeBox = boxes.find(
       (b) =>
         b.estado === 'en_atencion' &&
         (b.medico === doc.nombre || b.atencion?.medicos?.nombre === doc.nombre || b.atencion?.medico_id === doc.id)
     )
+    const leave = medicalLeaves[doc.id] || medicalLeaves[doc.id.toString()]
     return {
       ...doc,
       activeBox,
       isOccupied: Boolean(activeBox),
+      hasLeave: Boolean(leave),
+      leaveDetails: leave,
     }
   })
 
@@ -679,7 +683,9 @@ function FloorSupervisorManager({ boxes, doctors, onRefresh, onNotify }) {
               key={doc.id}
               className={`rounded-2xl border p-4 transition-all ${
                 doc.isOccupied
-                  ? 'border-rose-200 bg-rose-50/50 shadow-sm'
+                  ? 'border-teal-300 bg-teal-50/50 shadow-sm'
+                  : doc.hasLeave
+                  ? 'border-rose-200 bg-rose-50/50'
                   : 'border-slate-100 bg-slate-50/60'
               }`}
             >
@@ -691,41 +697,63 @@ function FloorSupervisorManager({ boxes, doctors, onRefresh, onNotify }) {
                   <h4 className="mt-1.5 text-base font-black text-slate-900">{doc.nombre}</h4>
                   <p className="text-xs font-semibold text-slate-500">Especialidad: {doc.especialidad_nombre || 'General'}</p>
                 </div>
-                <span className={`h-3 w-3 rounded-full shrink-0 ${doc.isOccupied ? 'bg-rose-500 animate-pulse' : 'bg-emerald-500'}`} />
+                <span className={`h-3 w-3 rounded-full shrink-0 ${doc.isOccupied ? 'bg-teal-600 animate-pulse' : doc.hasLeave ? 'bg-rose-500' : 'bg-slate-400'}`} />
               </div>
 
-              <div className="mt-4 border-t border-slate-200/60 pt-3 flex items-center justify-between">
+              <div className="mt-4 border-t border-slate-200/60 pt-3 flex flex-wrap items-center justify-between gap-2">
                 {doc.isOccupied ? (
                   <div>
-                    <div className="flex items-center gap-1.5 text-xs font-black text-rose-900">
-                      <MapPin size={14} className="text-rose-600" />
-                      Box {doc.activeBox?.numero} (Piso {doc.activeBox?.piso || '-'})
+                    <div className="flex items-center gap-1.5 text-xs font-black text-teal-900">
+                      <MapPin size={14} className="text-teal-600" />
+                      Sala {doc.activeBox?.numero} (Piso {doc.activeBox?.piso || '-'})
                     </div>
-                    <span className="text-[11px] font-semibold text-rose-700 block mt-0.5">
+                    <span className="text-[11px] font-semibold text-teal-700 block mt-0.5">
                       {doc.activeBox?.especialidad?.nombre}
                     </span>
                   </div>
+                ) : doc.hasLeave ? (
+                  <div className="flex items-center gap-1.5 text-xs font-black text-rose-800">
+                    <HeartPulse size={14} className="text-rose-600" />
+                    {doc.leaveDetails?.reason || 'Ausente por Licencia Médica'}
+                  </div>
                 ) : (
-                  <span className="text-xs font-extrabold text-emerald-700">⚪ Fuera de sala / Disponible</span>
+                  <span className="text-xs font-extrabold text-slate-500">⚪ Fuera de sala / Disponible</span>
                 )}
 
-                {doc.isOccupied && (
+                <div className="flex items-center gap-1">
+                  {doc.isOccupied && (
+                    <button
+                      onClick={async () => {
+                        if (doc.activeBox?.atencion?.id) {
+                          await finishAttention(doc.activeBox.atencion.id)
+                        } else {
+                          await finishAttention(`demo-active-${doc.activeBox.id}`)
+                        }
+                        onRefresh?.()
+                        onNotify?.(`Sala de ${doc.nombre} liberada por la supervisora.`)
+                      }}
+                      className="rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-extrabold text-white hover:bg-rose-700 transition-colors shadow-xs"
+                      title="Forzar liberación de sala por la supervisora"
+                    >
+                      Liberar Sala
+                    </button>
+                  )}
+
                   <button
                     onClick={async () => {
-                      if (doc.activeBox?.atencion?.id) {
-                        await finishAttention(doc.activeBox.atencion.id)
-                      } else {
-                        await finishAttention(`demo-active-${doc.activeBox.id}`)
+                      const reason = window.prompt(`Registrar inasistencia o licencia médica para ${doc.nombre}:`, 'Licencia Médica / Certificado')
+                      if (reason) {
+                        await reportMedicalLeave(doc.id, reason)
+                        onRefresh?.()
+                        onNotify?.(`Inasistencia por licencia registrada para ${doc.nombre}.`)
                       }
-                      onRefresh?.()
-                      onNotify?.(`Sala de ${doc.nombre} liberada por la supervisora.`)
                     }}
-                    className="rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-extrabold text-white hover:bg-rose-700 transition-colors shadow-xs"
-                    title="Forzar liberación de sala por la supervisora"
+                    className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs font-bold text-rose-700 hover:bg-rose-100"
+                    title="Registrar Licencia Médica o Certificado"
                   >
-                    Liberar Sala
+                    <HeartPulse size={14} />
                   </button>
-                )}
+                </div>
               </div>
             </div>
           ))}

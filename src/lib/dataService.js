@@ -111,6 +111,50 @@ export async function finishAttention(attentionId) {
   if (error) throw error
 }
 
+export async function reportMedicalLeave(doctorId, reason = 'Licencia médica / Justificativo') {
+  doctorId = validateId(doctorId, 'Profesional')
+  const [boxes, doctors] = await Promise.all([loadBoxes(), loadDoctors()])
+  const doctor = doctors.find((d) => d.id === doctorId || d.id.toString() === doctorId.toString())
+  if (!doctor) throw new Error('Profesional no encontrado')
+
+  const activeBox = boxes.find(
+    (b) =>
+      b.estado === 'en_atencion' &&
+      (b.medico === doctor.nombre ||
+        b.atencion?.medicos?.nombre === doctor.nombre ||
+        b.atencion?.medico_id === doctor.id ||
+        b.atencion?.medico_id?.toString() === doctor.id.toString())
+  )
+
+  if (activeBox) {
+    const attentionId = activeBox.atencion?.id || `demo-active-${activeBox.id}`
+    await finishAttention(attentionId)
+  }
+
+  const msg = `Inasistencia Registrada: ${doctor.nombre} presentó ${reason}.${activeBox ? ` Sala ${activeBox.numero} liberada de inmediato.` : ' Sin sala activa.'}`
+  await triggerSupervisorNotice(msg, 'Portal Funcionario')
+
+  if (typeof window !== 'undefined') {
+    const leaves = JSON.parse(window.localStorage.getItem('cr-ambulatorio-medical-leaves') || '{}')
+    leaves[doctorId] = { date: new Date().toISOString().slice(0, 10), reason, doctorName: doctor.nombre, timestamp: Date.now() }
+    window.localStorage.setItem('cr-ambulatorio-medical-leaves', JSON.stringify(leaves))
+    window.dispatchEvent(new CustomEvent('demo-boxes-changed'))
+  }
+
+  return { doctor, releasedBox: activeBox }
+}
+
+export function getMedicalLeaves() {
+  if (typeof window === 'undefined') return {}
+  const today = new Date().toISOString().slice(0, 10)
+  const leaves = JSON.parse(window.localStorage.getItem('cr-ambulatorio-medical-leaves') || '{}')
+  const activeToday = {}
+  Object.entries(leaves).forEach(([docId, data]) => {
+    if (data.date === today) activeToday[docId] = data
+  })
+  return activeToday
+}
+
 export async function listShifts() {
   if (!hasSupabase) return [{ id: 1, dia_semana: 'lunes', hora_inicio: '08:00', hora_fin: '14:00', box: 'B-201', doctor: 'Dra. Elena Rios' }]
   const { data, error } = await supabase.from('turnos').select('*, boxes(numero), medicos(nombre)').order('dia_semana')

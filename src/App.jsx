@@ -21,6 +21,7 @@ export default function App() {
           <Route path="/" element={<PantallaPublica />} />
           <Route path="/supervisora" element={authWrapper(VistaSupervisora)} />
           <Route path="/box/:numero" element={authWrapper(ControlBox)} />
+          <Route path="/funcionario" element={authWrapper(ControlBox)} />
           <Route path="/admin" element={<PanelAdmin />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

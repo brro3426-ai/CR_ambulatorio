@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
-import { ArrowLeft, BellRing, Building2, Crown, DoorOpen, MapPin, Radio, ShieldCheck, Stethoscope, UserCheck, UserX } from 'lucide-react'
+import { ArrowLeft, BellRing, Building2, Crown, DoorOpen, HeartPulse, MapPin, Radio, ShieldCheck, Stethoscope, UserCheck, UserX } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { finishAttention, loadBoxes, loadDoctors, startAttention, triggerSupervisorNotice } from '../lib/dataService'
+import { finishAttention, getMedicalLeaves, loadBoxes, loadDoctors, reportMedicalLeave, startAttention, triggerSupervisorNotice } from '../lib/dataService'
 import { hasSupabase, supabase } from '../lib/supabaseClient'
 
 export default function VistaSupervisora() {
   const [boxes, setBoxes] = useState([])
   const [doctors, setDoctors] = useState([])
+  const [medicalLeaves, setMedicalLeaves] = useState(() => getMedicalLeaves())
   const [loading, setLoading] = useState(true)
   const [customNotice, setCustomNotice] = useState('')
   const [noticeSent, setNoticeSent] = useState('')
@@ -16,6 +17,7 @@ export default function VistaSupervisora() {
       .then(([loadedBoxes, loadedDoctors]) => {
         setBoxes(loadedBoxes)
         setDoctors(loadedDoctors)
+        setMedicalLeaves(getMedicalLeaves())
       })
       .finally(() => setLoading(false))
   }
@@ -47,17 +49,20 @@ export default function VistaSupervisora() {
     }
   }, [])
 
-  // Map doctors to their active location
+  // Map doctors to their active location or leave status
   const roster = doctors.map((doc) => {
     const activeBox = boxes.find(
       (b) =>
         b.estado === 'en_atencion' &&
         (b.medico === doc.nombre || b.atencion?.medicos?.nombre === doc.nombre || b.atencion?.medico_id === doc.id)
     )
+    const leave = medicalLeaves[doc.id] || medicalLeaves[doc.id.toString()]
     return {
       ...doc,
       activeBox,
       isOccupied: Boolean(activeBox),
+      hasLeave: Boolean(leave),
+      leaveDetails: leave,
     }
   })
 
@@ -239,35 +244,42 @@ export default function VistaSupervisora() {
                   className={`relative overflow-hidden rounded-2xl border-2 p-5 transition-all ${
                     doc.isOccupied
                       ? 'border-teal-400 bg-teal-50/50 shadow-sm'
+                      : doc.hasLeave
+                      ? 'border-rose-200 bg-rose-50/50'
                       : 'border-slate-200 bg-white'
                   }`}
                 >
-                  <div className={`absolute left-0 top-0 h-full w-1.5 ${doc.isOccupied ? 'bg-teal-600' : 'bg-slate-300'}`} />
+                  <div className={`absolute left-0 top-0 h-full w-1.5 ${doc.isOccupied ? 'bg-teal-600' : doc.hasLeave ? 'bg-rose-500' : 'bg-slate-300'}`} />
 
                   <div className="pl-2">
                     <div className="flex items-center justify-between">
                       <span className="rounded bg-slate-100 px-2 py-0.5 text-[10px] font-black uppercase text-slate-700">
                         {doc.tipo === 'kinesiologo' ? 'Kinesiólogo/a' : doc.tipo === 'dermatologo' ? 'Dermatólogo/a' : doc.tipo === 'cardiologo' ? 'Cardiólogo/a' : 'Médico/a'}
                       </span>
-                      <span className={`flex items-center gap-1 text-[11px] font-extrabold ${doc.isOccupied ? 'text-teal-700' : 'text-slate-400'}`}>
-                        <span className={`h-2 w-2 rounded-full ${doc.isOccupied ? 'bg-teal-600' : 'bg-slate-300'}`} />
-                        {doc.isOccupied ? 'EN SALA' : 'DISPONIBLE'}
+                      <span className={`flex items-center gap-1 text-[11px] font-extrabold ${doc.isOccupied ? 'text-teal-700' : doc.hasLeave ? 'text-rose-700' : 'text-slate-400'}`}>
+                        <span className={`h-2 w-2 rounded-full ${doc.isOccupied ? 'bg-teal-600' : doc.hasLeave ? 'bg-rose-500' : 'bg-slate-300'}`} />
+                        {doc.isOccupied ? 'EN SALA' : doc.hasLeave ? 'LICENCIA' : 'DISPONIBLE'}
                       </span>
                     </div>
 
                     <h3 className="mt-2 text-lg font-black text-slate-900">{doc.nombre}</h3>
                     <p className="text-xs font-bold text-slate-500">Especialidad: {doc.especialidad_nombre || 'General'}</p>
 
-                    <div className="mt-4 border-t border-current/10 pt-3 flex items-center justify-between">
+                    <div className="mt-4 border-t border-current/10 pt-3 flex flex-wrap items-center justify-between gap-2">
                       {doc.isOccupied ? (
                         <div>
                           <div className="flex items-center gap-1.5 text-xs font-black text-slate-900">
                             <MapPin size={15} className="text-teal-600" />
-                            UBICADO EN BOX {doc.activeBox?.numero}
+                            UBICADO EN SALA {doc.activeBox?.numero}
                           </div>
                           <span className="text-[11px] font-bold text-teal-700 block mt-0.5">
                             Piso {doc.activeBox?.piso || '-'} · {doc.activeBox?.especialidad?.nombre}
                           </span>
+                        </div>
+                      ) : doc.hasLeave ? (
+                        <div className="flex items-center gap-1.5 text-xs font-black text-rose-800">
+                          <HeartPulse size={15} className="text-rose-600" />
+                          {doc.leaveDetails?.reason || 'Ausente por Licencia Médica'}
                         </div>
                       ) : (
                         <div className="flex items-center gap-1.5 text-xs font-bold text-slate-500">
@@ -276,27 +288,43 @@ export default function VistaSupervisora() {
                         </div>
                       )}
 
-                      {doc.isOccupied ? (
+                      <div className="flex items-center gap-1">
+                        {doc.isOccupied ? (
+                          <button
+                            onClick={async () => {
+                              const attentionId = doc.activeBox.atencion?.id || `demo-active-${doc.activeBox.id}`
+                              await finishAttention(attentionId)
+                              await triggerSupervisorNotice(`Sala ${doc.activeBox.numero} liberada por la encargada de piso`, 'Encargada de Piso')
+                              refreshData()
+                            }}
+                            className="rounded-xl bg-slate-800 px-3 py-1.5 text-xs font-black text-white hover:bg-rose-600 transition-colors shadow-sm"
+                            title="Liberar sala por la supervisora"
+                          >
+                            Liberar Sala
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => setAssigningDoc(doc)}
+                            className="rounded-xl bg-teal-700 px-3 py-1.5 text-xs font-black text-white hover:bg-teal-800 transition-colors shadow-sm"
+                          >
+                            + Asignar a Sala
+                          </button>
+                        )}
+
                         <button
                           onClick={async () => {
-                            const attentionId = doc.activeBox.atencion?.id || `demo-active-${doc.activeBox.id}`
-                            await finishAttention(attentionId)
-                            await triggerSupervisorNotice(`Sala ${doc.activeBox.numero} liberada por la encargada de piso`, 'Encargada de Piso')
-                            refreshData()
+                            const reason = window.prompt(`Registrar inasistencia o licencia médica para ${doc.nombre}:`, 'Licencia Médica / Certificado')
+                            if (reason) {
+                              await reportMedicalLeave(doc.id, reason)
+                              refreshData()
+                            }
                           }}
-                          className="rounded-xl bg-slate-800 px-3 py-1.5 text-xs font-black text-white hover:bg-rose-600 transition-colors shadow-sm"
-                          title="Liberar sala por la supervisora"
+                          className="rounded-xl border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs font-bold text-rose-700 hover:bg-rose-100"
+                          title="Registrar Licencia Médica o Certificado"
                         >
-                          Liberar Box
+                          <HeartPulse size={14} />
                         </button>
-                      ) : (
-                        <button
-                          onClick={() => setAssigningDoc(doc)}
-                          className="rounded-xl bg-teal-700 px-3 py-1.5 text-xs font-black text-white hover:bg-teal-800 transition-colors shadow-sm"
-                        >
-                          + Asignar a Box
-                        </button>
-                      )}
+                      </div>
                     </div>
                   </div>
                 </div>

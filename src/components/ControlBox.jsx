@@ -1,36 +1,43 @@
 import { useEffect, useMemo, useState } from 'react'
-import { AlertCircle, CheckCircle2, ChevronLeft, LogOut, RefreshCw, Stethoscope, UserCheck, UserX } from 'lucide-react'
+import { AlertCircle, CheckCircle2, ChevronLeft, FileText, HeartPulse, LogOut, MapPin, RefreshCw, Search, ShieldAlert, Stethoscope, UserCheck, Users, UserX } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
-import { finishAttention, loadBoxes, loadDoctors } from '../lib/dataService'
+import { finishAttention, getMedicalLeaves, loadBoxes, loadDoctors, reportMedicalLeave } from '../lib/dataService'
 import { hasSupabase, supabase } from '../lib/supabaseClient'
 
 export default function ControlBox() {
   const { numero } = useParams()
   const [boxes, setBoxes] = useState([])
   const [doctors, setDoctors] = useState([])
+  const [medicalLeaves, setMedicalLeaves] = useState(() => getMedicalLeaves())
   const [selectedDoctorId, setSelectedDoctorId] = useState(() => {
     if (typeof window !== 'undefined') {
       return window.localStorage.getItem('cr-ambulatorio-doctor-id') || ''
     }
     return ''
   })
+  const [activeTab, setActiveTab] = useState('mi-sala') // 'mi-sala' | 'companeros'
+  const [searchTerm, setSearchTerm] = useState('')
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
+  const [showLeaveModal, setShowLeaveModal] = useState(false)
+  const [leaveReason, setLeaveReason] = useState('Licencia médica / Reposo por salud')
 
   const refreshData = async () => {
     try {
       const [nextBoxes, nextDoctors] = await Promise.all([loadBoxes(), loadDoctors()])
       setBoxes(nextBoxes)
       setDoctors(nextDoctors)
+      setMedicalLeaves(getMedicalLeaves())
     } catch {
       setError('No se pudo conectar con el sistema.')
-    } finally {
+    } font-semibold
+    finally {
       setLoading(false)
     }
   }
 
-  // Auto-sync polling every 3 seconds & Realtime
+  // Auto-sync polling & Realtime
   useEffect(() => {
     refreshData()
     const timer = setInterval(refreshData, 3000)
@@ -88,119 +95,307 @@ export default function ControlBox() {
     )
   }, [boxes, currentDoctor])
 
+  // Map each doctor to their live location or medical leave status
+  const roster = useMemo(() => {
+    return doctors.map((doc) => {
+      const activeBox = boxes.find(
+        (b) =>
+          b.estado === 'en_atencion' &&
+          (b.medico === doc.nombre || b.atencion?.medicos?.nombre === doc.nombre || b.atencion?.medico_id === doc.id)
+      )
+      const leave = medicalLeaves[doc.id] || medicalLeaves[doc.id.toString()]
+      return {
+        ...doc,
+        activeBox,
+        isOccupied: Boolean(activeBox),
+        hasLeave: Boolean(leave),
+        leaveDetails: leave,
+      }
+    })
+  }, [doctors, boxes, medicalLeaves])
+
+  const filteredRoster = useMemo(() => {
+    if (!searchTerm.trim()) return roster
+    const term = searchTerm.toLowerCase()
+    return roster.filter(
+      (r) =>
+        r.nombre.toLowerCase().includes(term) ||
+        (r.especialidad_nombre && r.especialidad_nombre.toLowerCase().includes(term)) ||
+        r.tipo.toLowerCase().includes(term) ||
+        (r.activeBox && r.activeBox.numero.toLowerCase().includes(term))
+    )
+  }, [roster, searchTerm])
+
+  const hasMyDoctorLeave = Boolean(currentDoctor && (medicalLeaves[currentDoctor.id] || medicalLeaves[currentDoctor.id?.toString()]))
+
+  async function handleReportLeave() {
+    if (!currentDoctor) return
+    try {
+      await reportMedicalLeave(currentDoctor.id, leaveReason)
+      setMessage(`Se ha registrado tu inasistencia por "${leaveReason}". Tu sala ha sido liberada de inmediato para reasignación.`)
+      setShowLeaveModal(false)
+      refreshData()
+    } catch (err) {
+      setError(err.message || 'No se pudo registrar la inasistencia.')
+    }
+  }
+
   if (loading) {
     return (
       <main className="grid min-h-screen place-items-center bg-[#f6f7f3] text-slate-500">
         <div className="flex items-center gap-2 font-bold">
-          <RefreshCw className="animate-spin" /> Cargando portal móvil del profesional...
+          <RefreshCw className="animate-spin" /> Cargando portal móvil del funcionario...
         </div>
       </main>
     )
   }
 
   return (
-    <main className="min-h-screen bg-[#f6f7f3] p-5 text-slate-950">
-      <div className="mx-auto flex min-h-[calc(100vh-2.5rem)] max-w-lg flex-col justify-center">
-        <Link to="/" className="mb-6 inline-flex items-center gap-2 text-sm font-bold text-teal-700 hover:underline">
-          <ChevronLeft size={18} /> Ver TV Pública de Disponibilidad
+    <main className="min-h-screen bg-[#f6f7f3] p-4 text-slate-950 md:p-8">
+      <div className="mx-auto max-w-xl">
+        <Link to="/" className="mb-4 inline-flex items-center gap-2 text-xs font-bold text-teal-700 hover:underline">
+          <ChevronLeft size={16} /> Ver Pantalla TV de Disponibilidad
         </Link>
 
-        <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-xl md:p-8">
-          <div className="mb-6 flex items-start justify-between">
+        <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-xl md:p-7">
+          {/* Header Portal Móvil */}
+          <div className="flex items-start justify-between border-b pb-5 border-slate-100">
             <div>
-              <p className="text-xs font-black uppercase tracking-[0.2em] text-teal-700">Acceso Móvil Personal</p>
-              <h1 className="mt-1 text-3xl font-black tracking-tight text-slate-900">Portal del Profesional</h1>
-              <p className="mt-1 text-xs font-semibold text-slate-500">Consulta de Asignación de Sala por la Encargada de Piso</p>
+              <span className="text-[11px] font-black uppercase tracking-[0.2em] text-teal-700">Acceso Móvil Personal</span>
+              <h1 className="mt-1 text-2xl font-black tracking-tight text-slate-900 md:text-3xl">Portal del Funcionario</h1>
+              <p className="mt-0.5 text-xs font-semibold text-slate-500">Consulta de Sala Asignada y Ubicación de Compañeros</p>
             </div>
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-teal-50 text-teal-700">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-teal-50 text-teal-700 shadow-xs">
               <Stethoscope size={24} />
             </div>
           </div>
 
-          {/* Selector de Nombre del Profesional */}
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          {/* Identification Dropdown (Logged In Doctor Selector) */}
+          <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
             <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-600">
-              Selecciona tu Nombre:
+              Identificación de Funcionario:
               <select
                 value={selectedDoctorId}
                 onChange={(e) => handleSelectDoctor(e.target.value)}
-                className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-base font-bold text-slate-900 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+                className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-teal-500"
               >
-                <option value="">-- Seleccionar Profesional (Médico / Kine) --</option>
+                <option value="">-- Seleccionar mi cuenta de Funcionario --</option>
                 {doctors.map((doc) => (
                   <option key={doc.id} value={doc.id}>
-                    {doc.nombre} ({doc.especialidad_nombre || 'General'})
+                    {doc.nombre} ({doc.tipo === 'kinesiologo' ? 'Kinesiólogo/a' : doc.tipo === 'dermatologo' ? 'Dermatólogo/a' : doc.tipo === 'cardiologo' ? 'Cardiólogo/a' : 'Médico/a'})
                   </option>
                 ))}
               </select>
             </label>
+
+            {currentDoctor && (
+              <div className="mt-3 flex items-center justify-between rounded-xl bg-white p-3 border border-slate-200/80 text-xs">
+                <div>
+                  <span className="font-extrabold text-slate-900">{currentDoctor.nombre}</span>
+                  <span className="block font-semibold text-teal-700">
+                    {currentDoctor.tipo === 'kinesiologo' ? 'Kinesiólogo/a' : currentDoctor.tipo === 'dermatologo' ? 'Dermatólogo/a' : currentDoctor.tipo === 'cardiologo' ? 'Cardiólogo/a' : 'Médico/a'} · {currentDoctor.especialidad_nombre || 'Consulta Externa'}
+                  </span>
+                </div>
+                <span className="rounded-full bg-teal-100 px-2.5 py-0.5 text-[10px] font-black uppercase text-teal-800">
+                  Identificado
+                </span>
+              </div>
+            )}
           </div>
 
-          {/* Asignación en tiempo real */}
-          {currentDoctor ? (
-            <div className="mt-6">
-              {assignedBox ? (
-                /* TIENE SALA ASIGNADA */
-                <div className="rounded-2xl border-2 border-teal-600 bg-teal-50 p-6 text-slate-900 shadow-md animate-in fade-in">
-                  <div className="flex items-center justify-between">
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-teal-700 px-3 py-1 text-xs font-black text-white uppercase">
-                      <UserCheck size={14} /> Sala Asignada Activa
-                    </span>
-                    <span className="text-xs font-extrabold text-teal-900">Piso {assignedBox.piso || '-'}</span>
-                  </div>
+          {/* Navigation Tabs: Mi Sala vs Ubicación de Compañeros */}
+          <nav className="mt-5 flex rounded-2xl bg-slate-100 p-1">
+            <button
+              onClick={() => setActiveTab('mi-sala')}
+              className={`flex-1 rounded-xl py-2.5 text-xs font-black transition-all flex items-center justify-center gap-2 ${
+                activeTab === 'mi-sala' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <UserCheck size={16} /> Mi Sala Asignada
+            </button>
+            <button
+              onClick={() => setActiveTab('companeros')}
+              className={`flex-1 rounded-xl py-2.5 text-xs font-black transition-all flex items-center justify-center gap-2 ${
+                activeTab === 'companeros' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Users size={16} /> Dónde están mis Compañeros ({doctors.length})
+            </button>
+          </nav>
 
-                  <div className="mt-4">
-                    <span className="text-xs font-extrabold uppercase text-teal-700 tracking-wider">Ubicación asignada:</span>
-                    <h2 className="text-5xl font-black tracking-tight text-teal-950 mt-1">
-                      BOX {assignedBox.numero}
-                    </h2>
-                    <p className="text-sm font-black text-teal-800 mt-1">
-                      {assignedBox.especialidad?.nombre || 'Consulta Externa'}
-                    </p>
-                  </div>
+          {/* TAB 1: MI SALA ASIGNADA & INASISTENCIA */}
+          {activeTab === 'mi-sala' && (
+            <div className="mt-5">
+              {currentDoctor ? (
+                <div>
+                  {hasMyDoctorLeave ? (
+                    /* REGISTRÓ LICENCIA MÉDICA / INASISTENCIA */
+                    <div className="rounded-2xl border-2 border-rose-300 bg-rose-50 p-5 text-rose-950 animate-in fade-in">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-rose-200 text-rose-900 font-bold">
+                          <HeartPulse size={20} />
+                        </div>
+                        <div>
+                          <span className="text-xs font-black uppercase tracking-wider text-rose-800">Estado de Asistencia</span>
+                          <h3 className="text-lg font-black text-rose-950">Inasistencia por Licencia Registrada</h3>
+                        </div>
+                      </div>
+                      <p className="mt-3 text-xs font-semibold leading-relaxed text-rose-900">
+                        Has notificado justificativo/licencia médica para el día de hoy. Tu sala ha sido liberada automáticamente para que la supervisora la asigne a otro funcionario si corresponde.
+                      </p>
+                    </div>
+                  ) : assignedBox ? (
+                    /* TIENE SALA ASIGNADA ACTIVA */
+                    <div className="rounded-2xl border-2 border-teal-600 bg-teal-50/80 p-5 text-slate-900 shadow-md animate-in fade-in">
+                      <div className="flex items-center justify-between">
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-teal-700 px-3 py-1 text-xs font-black text-white uppercase">
+                          <UserCheck size={14} /> Sala Asignada Activa
+                        </span>
+                        <span className="text-xs font-extrabold text-teal-900">Piso {assignedBox.piso || '-'}</span>
+                      </div>
 
-                  <div className="mt-4 rounded-xl bg-white p-3.5 border border-teal-200 text-xs font-bold text-slate-700 leading-relaxed shadow-2xs">
-                    📍 La supervisora te ha asignado la sala <strong>Box {assignedBox.numero}</strong>. Los pacientes y la pantalla del pasillo ven tu ubicación en tiempo real.
-                  </div>
+                      <div className="mt-4">
+                        <span className="text-xs font-extrabold uppercase text-teal-700 tracking-wider">Ubicación de Atención:</span>
+                        <h2 className="text-5xl font-black tracking-tight text-teal-950 mt-1">
+                          SALA {assignedBox.numero}
+                        </h2>
+                        <p className="text-sm font-black text-teal-800 mt-1">
+                          {assignedBox.especialidad?.nombre || 'Consulta Externa'}
+                        </p>
+                      </div>
 
-                  <button
-                    onClick={async () => {
-                      try {
-                        const attentionId = assignedBox.atencion?.id || `demo-active-${assignedBox.id}`
-                        await finishAttention(attentionId)
-                        setMessage(`Has liberado la sala Box ${assignedBox.numero}.`)
-                        await refreshData()
-                      } catch {
-                        setError('No se pudo liberar la sala.')
-                      }
-                    }}
-                    className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-rose-600 py-4 text-sm font-black text-white shadow-lg hover:bg-rose-700 transition-colors"
-                  >
-                    <LogOut size={18} /> Liberar Sala / Terminar Turno en Box {assignedBox.numero}
-                  </button>
+                      <div className="mt-4 rounded-xl bg-white p-3.5 border border-teal-200 text-xs font-bold text-slate-700 leading-relaxed shadow-2xs">
+                        📍 La Encargada de Piso te asignó la <strong>Sala {assignedBox.numero}</strong>. Los pacientes y la pantalla del pasillo ven tu presencia activa.
+                      </div>
+
+                      <div className="mt-5 space-y-2">
+                        <button
+                          onClick={async () => {
+                            try {
+                              const attentionId = assignedBox.atencion?.id || `demo-active-${assignedBox.id}`
+                              await finishAttention(attentionId)
+                              setMessage(`Has liberado la Sala ${assignedBox.numero}.`)
+                              await refreshData()
+                            } catch {
+                              setError('No se pudo liberar la sala.')
+                            }
+                          }}
+                          className="flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 py-3.5 text-xs font-black text-white shadow-md hover:bg-slate-800 transition-colors"
+                        >
+                          <LogOut size={16} /> Finalizar Atención / Liberar Sala {assignedBox.numero}
+                        </button>
+
+                        <button
+                          onClick={() => setShowLeaveModal(true)}
+                          className="flex w-full items-center justify-center gap-2 rounded-xl border border-rose-300 bg-rose-50 py-3 text-xs font-black text-rose-800 hover:bg-rose-100 transition-colors"
+                        >
+                          <HeartPulse size={16} className="text-rose-600" /> Presentar Licencia Médica / Enfermo (Liberar Sala de Inmediato)
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    /* NO TIENE SALA ASIGNADA HOY AÚN */
+                    <div className="rounded-2xl border-2 border-dashed border-amber-300 bg-amber-50/80 p-5 text-amber-950 animate-in fade-in">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-200 text-amber-900 font-bold">
+                          <UserX size={20} />
+                        </div>
+                        <div>
+                          <span className="text-xs font-black uppercase tracking-wider text-amber-800">Estado de Asignación</span>
+                          <h3 className="text-lg font-black text-amber-950">Aún no tienes sala asignada</h3>
+                        </div>
+                      </div>
+
+                      <p className="mt-3 text-xs font-semibold text-amber-900 leading-relaxed">
+                        Hola <strong>{currentDoctor.nombre}</strong>. La Encargada de Piso aún no te ha asignado una sala. Esta pantalla se actualizará automáticamente apenas te asignen un box.
+                      </p>
+
+                      <div className="mt-4 pt-3 border-t border-amber-200">
+                        <button
+                          onClick={() => setShowLeaveModal(true)}
+                          className="flex w-full items-center justify-center gap-2 rounded-xl border border-rose-300 bg-white py-2.5 text-xs font-black text-rose-800 hover:bg-rose-50 transition-colors"
+                        >
+                          <HeartPulse size={16} className="text-rose-600" /> Notificar Licencia / Inasistencia Médica
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : (
-                /* AÚN NO TIENE SALA ASIGNADA */
-                <div className="rounded-2xl border-2 border-dashed border-amber-300 bg-amber-50/80 p-6 text-amber-950 animate-in fade-in">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-200 text-amber-900 font-bold">
-                      <UserX size={20} />
-                    </div>
-                    <div>
-                      <span className="text-xs font-black uppercase tracking-wider text-amber-800">Estado de Asignación</span>
-                      <h3 className="text-lg font-black text-amber-950">Aún no tienes sala asignada</h3>
-                    </div>
-                  </div>
-
-                  <p className="mt-3 text-xs font-semibold text-amber-900 leading-relaxed">
-                    Hola <strong>{currentDoctor.nombre}</strong>. La Encargada de Piso aún no te ha asignado un Box. Esta pantalla cambiará automáticamente apenas la supervisora te asigne una sala.
-                  </p>
+                <div className="rounded-2xl bg-slate-100 p-6 text-center text-slate-500 font-bold text-xs">
+                  👈 Selecciona tu nombre de funcionario en la casilla superior para ver tu sala asignada.
                 </div>
               )}
             </div>
-          ) : (
-            <div className="mt-6 rounded-2xl bg-slate-100 p-6 text-center text-slate-500 font-bold text-xs">
-              👈 Selecciona tu nombre arriba para consultar qué sala tienes asignada.
+          )}
+
+          {/* TAB 2: UBICACIÓN EN TIEMPO REAL DE COMPAÑEROS FUNCIONARIOS */}
+          {activeTab === 'companeros' && (
+            <div className="mt-5 space-y-4">
+              <div className="relative">
+                <Search size={16} className="absolute left-3.5 top-3.5 text-slate-400" />
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="Buscar compañero por nombre o especialidad..."
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-4 py-2.5 text-xs font-semibold text-slate-900 outline-none focus:border-teal-500"
+                />
+              </div>
+
+              <div className="space-y-3">
+                {filteredRoster.map((doc) => (
+                  <div
+                    key={doc.id}
+                    className={`rounded-2xl border p-4 transition-all ${
+                      doc.isOccupied
+                        ? 'border-teal-300 bg-teal-50/50 shadow-2xs'
+                        : doc.hasLeave
+                        ? 'border-rose-200 bg-rose-50/50'
+                        : 'border-slate-200 bg-slate-50/60'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <span className="rounded bg-white px-2 py-0.5 text-[9px] font-black uppercase text-slate-700 shadow-2xs">
+                          {doc.tipo === 'kinesiologo' ? 'Kinesiólogo/a' : doc.tipo === 'dermatologo' ? 'Dermatólogo/a' : doc.tipo === 'cardiologo' ? 'Cardiólogo/a' : 'Médico/a'}
+                        </span>
+                        <h4 className="mt-1 text-sm font-black text-slate-900">{doc.nombre}</h4>
+                        <p className="text-[11px] font-semibold text-slate-500">{doc.especialidad_nombre || 'General'}</p>
+                      </div>
+
+                      <span
+                        className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase ${
+                          doc.isOccupied
+                            ? 'bg-teal-700 text-white'
+                            : doc.hasLeave
+                            ? 'bg-rose-600 text-white'
+                            : 'bg-slate-200 text-slate-700'
+                        }`}
+                      >
+                        <span className={`h-1.5 w-1.5 rounded-full ${doc.isOccupied ? 'bg-teal-300 animate-ping' : doc.hasLeave ? 'bg-rose-200' : 'bg-slate-400'}`} />
+                        {doc.isOccupied ? 'En Sala' : doc.hasLeave ? 'Licencia' : 'Disponible'}
+                      </span>
+                    </div>
+
+                    <div className="mt-3 border-t border-slate-200/70 pt-2.5 flex items-center justify-between text-xs">
+                      {doc.isOccupied ? (
+                        <div className="flex items-center gap-1.5 font-black text-teal-900">
+                          <MapPin size={14} className="text-teal-600 shrink-0" />
+                          Ubicado/a en Sala {doc.activeBox?.numero} (Piso {doc.activeBox?.piso || '-'})
+                        </div>
+                      ) : doc.hasLeave ? (
+                        <div className="flex items-center gap-1.5 font-extrabold text-rose-800">
+                          <HeartPulse size={14} className="text-rose-600 shrink-0" />
+                          {doc.leaveDetails?.reason || 'Ausente por Licencia Médica'}
+                        </div>
+                      ) : (
+                        <span className="font-extrabold text-slate-500">⚪ Sin sala asignada actualmente</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
@@ -219,6 +414,52 @@ export default function ControlBox() {
           )}
         </section>
       </div>
+
+      {/* MODAL REGISTRO DE LICENCIA / ENFERMEDAD */}
+      {showLeaveModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-xs animate-in fade-in">
+          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl">
+            <div className="flex items-center gap-3 text-rose-700">
+              <HeartPulse size={28} />
+              <h3 className="text-xl font-black text-slate-900">Declarar Licencia Médica / Inasistencia</h3>
+            </div>
+
+            <p className="mt-2 text-xs font-semibold text-slate-600 leading-relaxed">
+              Hola <strong>{currentDoctor?.nombre}</strong>. Al declarar tu inasistencia o presentar certificado médico, tu sala asignada se liberará <strong>de inmediato</strong> para que la Encargada de Piso pueda reasignarla a otro colega.
+            </p>
+
+            <label className="mt-4 block text-xs font-black uppercase text-slate-700">
+              Motivo / Detalle del Justificativo:
+              <select
+                value={leaveReason}
+                onChange={(e) => setLeaveReason(e.target.value)}
+                className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-xs font-bold text-slate-900 outline-none focus:border-teal-500"
+              >
+                <option value="Licencia Médica / Reposo Sanitario">Licencia Médica / Reposo Sanitario</option>
+                <option value="Certificado Médico de Urgencia">Certificado Médico de Urgencia</option>
+                <option value="Permiso Administrativo / Justificado">Permiso Administrativo / Justificado</option>
+                <option value="Imprevisto de Salud">Imprevisto de Salud</option>
+              </select>
+            </label>
+
+            <div className="mt-6 flex items-center gap-2">
+              <button
+                onClick={() => setShowLeaveModal(false)}
+                className="flex-1 rounded-xl border border-slate-200 py-3 text-xs font-bold text-slate-600 hover:bg-slate-100"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleReportLeave}
+                className="flex-1 rounded-xl bg-rose-600 py-3 text-xs font-black text-white shadow-md hover:bg-rose-700"
+              >
+                Confirmar y Liberar Sala
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   )
+}
 }
