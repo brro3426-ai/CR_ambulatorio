@@ -31,8 +31,7 @@ export default function ControlBox() {
       setMedicalLeaves(getMedicalLeaves())
     } catch {
       setError('No se pudo conectar con el sistema.')
-    } font-semibold
-    finally {
+    } finally {
       setLoading(false)
     }
   }
