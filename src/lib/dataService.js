@@ -1,6 +1,6 @@
 import { hasSupabase, supabase } from './supabaseClient'
 import { demoBoxes, demoDoctors, demoSpecialties } from './demoData'
-import { sanitizeStatus, sanitizeText, validateId } from './validation'
+import { checkClientRateLimit, sanitizeStatus, sanitizeText, validateId } from './validation'
 
 const DEMO_STORAGE_KEY = 'cr-ambulatorio-demo-boxes'
 
@@ -73,6 +73,7 @@ export async function loadReports() {
 }
 
 export async function startAttention(boxId, doctorId, doctorName) {
+  checkClientRateLimit('startAttention', 15, 60000)
   boxId = validateId(boxId, 'Box')
   doctorId = validateId(doctorId, 'Profesional')
   const [boxes, doctors] = await Promise.all([loadBoxes(), loadDoctors()])
@@ -102,6 +103,7 @@ export async function startAttention(boxId, doctorId, doctorName) {
 }
 
 export async function finishAttention(attentionId) {
+  checkClientRateLimit('finishAttention', 15, 60000)
   attentionId = validateId(attentionId, 'Atención')
   if (!hasSupabase) {
     saveDemoBoxes(getDemoBoxes().map((box) => box.atencion?.id === attentionId ? { ...box, estado: 'disponible', medico: null, atencion: null, horaEntrada: null } : box))
