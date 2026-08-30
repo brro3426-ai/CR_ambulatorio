@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { BellRing, Building2, Clock, LayoutGrid, Maximize2, Megaphone, Minimize2, MonitorDot, Moon, MousePointerClick, QrCode, Radio, RefreshCw, ShieldCheck, Sun, Volume2, VolumeX, Zap } from 'lucide-react'
+import { BellRing, Building2, Clock, LayoutGrid, Maximize2, Megaphone, Minimize2, MonitorDot, Moon, MousePointerClick, QrCode, Radio, RefreshCw, Settings2, ShieldCheck, Stethoscope, Sun, Volume2, VolumeX, Zap } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import BoxCard from './BoxCard'
 import FiltroEspecialidad from './FiltroEspecialidad'
@@ -251,6 +251,23 @@ export default function PantallaPublica() {
           >
             {isFullscreen ? <Minimize2 size={20} /> : <Maximize2 size={20} />}
           </button>
+
+          {/* Accesos Rápidos */}
+          <Link
+            to="/funcionario"
+            className="flex items-center gap-1.5 rounded-2xl border border-teal-200 bg-teal-50 px-3.5 py-2.5 text-xs font-black text-teal-800 hover:bg-teal-100 transition-colors shadow-2xs"
+            title="Portal del Funcionario / Mi Sala"
+          >
+            <Stethoscope size={16} /> Portal Funcionario
+          </Link>
+
+          <Link
+            to="/admin"
+            className="flex items-center gap-1.5 rounded-2xl bg-slate-950 px-3.5 py-2.5 text-xs font-black text-white hover:bg-teal-800 transition-colors shadow-sm"
+            title="Panel de Control Administrativo"
+          >
+            <Settings2 size={16} /> Admin
+          </Link>
         </div>
       </header>
 

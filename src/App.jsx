@@ -18,11 +18,17 @@ export default function App() {
     <BrowserRouter>
       <Suspense fallback={<div style={{ padding: 24, fontFamily: 'sans-serif' }}>Cargando...</div>}>
         <Routes>
+          {/* Pantalla Pública / TV de disponibilidad (Acceso libre) */}
           <Route path="/" element={<PantallaPublica />} />
+
+          {/* Portal del Funcionario desde el móvil (Acceso directo libre) */}
+          <Route path="/funcionario" element={<ControlBox />} />
+          <Route path="/box/:numero" element={<ControlBox />} />
+
+          {/* Panel de Supervisora y Administración (Con login y autenticación) */}
           <Route path="/supervisora" element={authWrapper(VistaSupervisora)} />
-          <Route path="/box/:numero" element={authWrapper(ControlBox)} />
-          <Route path="/funcionario" element={authWrapper(ControlBox)} />
           <Route path="/admin" element={<PanelAdmin />} />
+          
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Suspense>
