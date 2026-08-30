@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import { AlertCircle, CheckCircle2, ChevronLeft, FileText, HeartPulse, LogOut, MapPin, RefreshCw, Search, ShieldAlert, Stethoscope, UserCheck, Users, UserX } from 'lucide-react'
+import { AlertCircle, BellRing, Calendar, CalendarClock, Check, CheckCircle2, ChevronLeft, Clock, FileText, HeartPulse, Lock, LogOut, MapPin, Megaphone, PauseCircle, PlayCircle, Plus, RefreshCw, Search, ShieldAlert, Sparkles, Stethoscope, Trash2, UserCheck, Users, UserX, Volume2 } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
-import { finishAttention, getMedicalLeaves, loadBoxes, loadDoctors, reportMedicalLeave } from '../lib/dataService'
+import { finishAttention, getDoctorAgenda, getMedicalLeaves, loadBoxes, loadDoctors, reportMedicalLeave, saveDoctorAgenda, setBoxAvailability, triggerPatientCall, triggerSupervisorNotice } from '../lib/dataService'
 import { hasSupabase, supabase } from '../lib/supabaseClient'
 
 export default function ControlBox() {
@@ -20,6 +20,19 @@ export default function ControlBox() {
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
+
+  // Agenda state
+  const [agenda, setAgenda] = useState([])
+  const [showAddModal, setShowAddModal] = useState(false)
+  const [newPatientForm, setNewPatientForm] = useState({
+    hora: '09:00',
+    paciente: '',
+    rut: '',
+    motivo: 'Consulta Clínica',
+    bloqueado: false,
+  })
+
+  // Leave Modal state
   const [showLeaveModal, setShowLeaveModal] = useState(false)
   const [leaveReason, setLeaveReason] = useState('Licencia médica / Reposo por salud')
 
@@ -29,6 +42,9 @@ export default function ControlBox() {
       setBoxes(nextBoxes)
       setDoctors(nextDoctors)
       setMedicalLeaves(getMedicalLeaves())
+      if (selectedDoctorId) {
+        setAgenda(getDoctorAgenda(selectedDoctorId))
+      }
     } catch {
       setError('No se pudo conectar con el sistema.')
     } finally {
@@ -56,12 +72,14 @@ export default function ControlBox() {
     const handleDemo = () => refreshData()
     window.addEventListener('demo-boxes-changed', handleDemo)
     window.addEventListener('storage', handleDemo)
+    window.addEventListener('agenda-updated', handleDemo)
     return () => {
       clearInterval(timer)
       window.removeEventListener('demo-boxes-changed', handleDemo)
       window.removeEventListener('storage', handleDemo)
+      window.removeEventListener('agenda-updated', handleDemo)
     }
-  }, [])
+  }, [selectedDoctorId])
 
   function handleSelectDoctor(id) {
     setSelectedDoctorId(id)
@@ -70,8 +88,10 @@ export default function ControlBox() {
     if (typeof window !== 'undefined') {
       if (id) {
         window.localStorage.setItem('cr-ambulatorio-doctor-id', id)
+        setAgenda(getDoctorAgenda(id))
       } else {
         window.localStorage.removeItem('cr-ambulatorio-doctor-id')
+        setAgenda([])
       }
     }
   }
@@ -81,16 +101,15 @@ export default function ControlBox() {
     return doctors.find((d) => d.id.toString() === selectedDoctorId.toString())
   }, [doctors, selectedDoctorId])
 
-  // Active room assigned to this doctor
+  // Active room assigned to this doctor (whether in attention or available waiting)
   const assignedBox = useMemo(() => {
     if (!currentDoctor) return null
     return boxes.find(
       (b) =>
-        b.estado === 'en_atencion' &&
-        (b.medico === currentDoctor.nombre ||
-          b.atencion?.medicos?.nombre === currentDoctor.nombre ||
-          b.atencion?.medico_id === currentDoctor.id ||
-          b.atencion?.medico_id?.toString() === currentDoctor.id?.toString())
+        b.medico === currentDoctor.nombre ||
+        b.atencion?.medicos?.nombre === currentDoctor.nombre ||
+        b.atencion?.medico_id === currentDoctor.id ||
+        b.atencion?.medico_id?.toString() === currentDoctor.id?.toString()
     )
   }, [boxes, currentDoctor])
 
@@ -99,14 +118,14 @@ export default function ControlBox() {
     return doctors.map((doc) => {
       const activeBox = boxes.find(
         (b) =>
-          b.estado === 'en_atencion' &&
           (b.medico === doc.nombre || b.atencion?.medicos?.nombre === doc.nombre || b.atencion?.medico_id === doc.id)
       )
       const leave = medicalLeaves[doc.id] || medicalLeaves[doc.id.toString()]
       return {
         ...doc,
         activeBox,
-        isOccupied: Boolean(activeBox),
+        isOccupied: Boolean(activeBox && activeBox.estado === 'en_atencion'),
+        isAssigned: Boolean(activeBox),
         hasLeave: Boolean(leave),
         leaveDetails: leave,
       }
@@ -126,6 +145,86 @@ export default function ControlBox() {
   }, [roster, searchTerm])
 
   const hasMyDoctorLeave = Boolean(currentDoctor && (medicalLeaves[currentDoctor.id] || medicalLeaves[currentDoctor.id?.toString()]))
+
+  // Quick live status change by professional
+  async function handleToggleStatus(newStatus) {
+    if (!assignedBox) return
+    try {
+      await setBoxAvailability(assignedBox.id, newStatus)
+      setMessage(newStatus === 'disponible' ? '✓ Sala marcada como DISPONIBLE (Lista para recibir paciente).' : '✓ Sala marcada EN ATENCIÓN (Consulta en curso).')
+      refreshData()
+    } catch (err) {
+      setError(err.message || 'No se pudo actualizar el estado de la sala.')
+    }
+  }
+
+  // Call / Start attention for a patient from agenda
+  async function handleCallPatient(item) {
+    if (!assignedBox) return
+    try {
+      const updatedAgenda = agenda.map((a) => (a.id === item.id ? { ...a, estado: 'en_atencion' } : a.estado === 'en_atencion' ? { ...a, estado: 'pendiente' } : a))
+      saveDoctorAgenda(currentDoctor.id, updatedAgenda)
+      setAgenda(updatedAgenda)
+
+      // Set room to 'en_atencion'
+      await setBoxAvailability(assignedBox.id, 'en_atencion')
+
+      // Announce patient on public TVs
+      await triggerPatientCall(assignedBox.numero, assignedBox.especialidad?.nombre || 'Consulta Externa', item.paciente)
+
+      setMessage(`📢 Llamando a ${item.paciente}. La Sala ${assignedBox.numero} pasó a EN ATENCIÓN.`)
+      refreshData()
+    } catch (err) {
+      setError(err.message || 'Error al iniciar atención del paciente.')
+    }
+  }
+
+  // Finish consultation for a patient -> Room returns to DISPONIBLE automatically!
+  async function handleFinishPatient(item) {
+    if (!assignedBox) return
+    try {
+      const updatedAgenda = agenda.map((a) => (a.id === item.id ? { ...a, estado: 'atendido' } : a))
+      saveDoctorAgenda(currentDoctor.id, updatedAgenda)
+      setAgenda(updatedAgenda)
+
+      // AUTOMATICALLY set room to 'disponible' while KEEPING room assigned to the doctor!
+      await setBoxAvailability(assignedBox.id, 'disponible')
+
+      setMessage(`✓ Atención de ${item.paciente} finalizada. La Sala ${assignedBox.numero} ahora aparece DISPONIBLE (en verde) para tu próximo paciente.`)
+      refreshData()
+    } catch (err) {
+      setError(err.message || 'Error al finalizar atención.')
+    }
+  }
+
+  // Add new patient or block slot
+  function handleAddPatientSubmit(e) {
+    e.preventDefault()
+    if (!currentDoctor) return
+    const newItem = {
+      id: `ag-${Date.now()}`,
+      hora: newPatientForm.hora,
+      paciente: newPatientForm.bloqueado ? (newPatientForm.paciente || 'Bloque Reservado / Pausa') : newPatientForm.paciente,
+      rut: newPatientForm.rut,
+      motivo: newPatientForm.motivo,
+      estado: 'pendiente',
+      bloqueado: newPatientForm.bloqueado,
+    }
+    const updated = [...agenda, newItem].sort((a, b) => a.hora.localeCompare(b.hora))
+    saveDoctorAgenda(currentDoctor.id, updated)
+    setAgenda(updated)
+    setShowAddModal(false)
+    setNewPatientForm({ hora: '09:00', paciente: '', rut: '', motivo: 'Consulta Clínica', bloqueado: false })
+    setMessage('Cita / Bloqueo añadido a tu agenda del día.')
+  }
+
+  // Remove patient slot
+  function handleRemovePatient(itemId) {
+    if (!currentDoctor) return
+    const updated = agenda.filter((a) => a.id !== itemId)
+    saveDoctorAgenda(currentDoctor.id, updated)
+    setAgenda(updated)
+  }
 
   async function handleReportLeave() {
     if (!currentDoctor) return
@@ -151,7 +250,7 @@ export default function ControlBox() {
 
   return (
     <main className="min-h-screen bg-[#f6f7f3] p-4 text-slate-950 md:p-8">
-      <div className="mx-auto max-w-xl">
+      <div className="mx-auto max-w-2xl">
         <Link to="/" className="mb-4 inline-flex items-center gap-2 text-xs font-bold text-teal-700 hover:underline">
           <ChevronLeft size={16} /> Ver Pantalla TV de Disponibilidad
         </Link>
@@ -162,7 +261,7 @@ export default function ControlBox() {
             <div>
               <span className="text-[11px] font-black uppercase tracking-[0.2em] text-teal-700">Acceso Móvil Personal</span>
               <h1 className="mt-1 text-2xl font-black tracking-tight text-slate-900 md:text-3xl">Portal del Funcionario</h1>
-              <p className="mt-0.5 text-xs font-semibold text-slate-500">Consulta de Sala Asignada y Ubicación de Compañeros</p>
+              <p className="mt-0.5 text-xs font-semibold text-slate-500">Gestión de Agenda, Estado de Sala y Compañeros</p>
             </div>
             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-teal-50 text-teal-700 shadow-xs">
               <Stethoscope size={24} />
@@ -202,7 +301,7 @@ export default function ControlBox() {
             )}
           </div>
 
-          {/* Navigation Tabs: Mi Sala vs Ubicación de Compañeros */}
+          {/* Navigation Tabs: Mi Sala & Agenda vs Ubicación de Compañeros */}
           <nav className="mt-5 flex rounded-2xl bg-slate-100 p-1">
             <button
               onClick={() => setActiveTab('mi-sala')}
@@ -210,7 +309,7 @@ export default function ControlBox() {
                 activeTab === 'mi-sala' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              <UserCheck size={16} /> Mi Sala Asignada
+              <UserCheck size={16} /> Mi Sala & Agenda
             </button>
             <button
               onClick={() => setActiveTab('companeros')}
@@ -222,9 +321,9 @@ export default function ControlBox() {
             </button>
           </nav>
 
-          {/* TAB 1: MI SALA ASIGNADA & INASISTENCIA */}
+          {/* TAB 1: MI SALA, INTERRUPTOR DE ESTADO Y AGENDA DE PACIENTES */}
           {activeTab === 'mi-sala' && (
-            <div className="mt-5">
+            <div className="mt-5 space-y-6">
               {currentDoctor ? (
                 <div>
                   {hasMyDoctorLeave ? (
@@ -245,35 +344,184 @@ export default function ControlBox() {
                     </div>
                   ) : assignedBox ? (
                     /* TIENE SALA ASIGNADA ACTIVA */
-                    <div className="rounded-2xl border-2 border-teal-600 bg-teal-50/80 p-5 text-slate-900 shadow-md animate-in fade-in">
-                      <div className="flex items-center justify-between">
-                        <span className="inline-flex items-center gap-1.5 rounded-full bg-teal-700 px-3 py-1 text-xs font-black text-white uppercase">
-                          <UserCheck size={14} /> Sala Asignada Activa
-                        </span>
-                        <span className="text-xs font-extrabold text-teal-900">Piso {assignedBox.piso || '-'}</span>
+                    <div className="space-y-6">
+                      {/* Tarjeta de Sala Asignada */}
+                      <div className="rounded-2xl border-2 border-teal-600 bg-teal-50/80 p-5 text-slate-900 shadow-md">
+                        <div className="flex items-center justify-between">
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-teal-700 px-3 py-1 text-xs font-black text-white uppercase">
+                            <UserCheck size={14} /> Sala Asignada
+                          </span>
+                          <span className="text-xs font-extrabold text-teal-900">Piso {assignedBox.piso || '-'}</span>
+                        </div>
+
+                        <div className="mt-3">
+                          <span className="text-xs font-extrabold uppercase text-teal-700 tracking-wider">Tu Sala de Consulta:</span>
+                          <h2 className="text-4xl font-black tracking-tight text-teal-950 mt-0.5">
+                            SALA {assignedBox.numero}
+                          </h2>
+                          <p className="text-xs font-bold text-teal-800">
+                            {assignedBox.especialidad?.nombre || 'Consulta Externa'}
+                          </p>
+                        </div>
+
+                        {/* Control Rápido de Estado en Tiempo Real (Disponible vs En Atención) */}
+                        <div className="mt-5 rounded-2xl bg-white p-4 border border-teal-200 shadow-2xs">
+                          <span className="text-[11px] font-black uppercase tracking-wider text-slate-500 block">
+                            Estado en Vivo en Pantallas del Hospital:
+                          </span>
+
+                          <div className="mt-3 flex gap-2">
+                            <button
+                              onClick={() => handleToggleStatus('disponible')}
+                              className={`flex-1 flex items-center justify-center gap-2 rounded-xl py-3 text-xs font-black transition-all ${
+                                assignedBox.estado === 'disponible'
+                                  ? 'bg-emerald-600 text-white shadow-md ring-2 ring-emerald-300'
+                                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                              }`}
+                            >
+                              <span className="h-2.5 w-2.5 rounded-full bg-emerald-300" />
+                              🟢 Disponible (Listo / Esperando)
+                            </button>
+
+                            <button
+                              onClick={() => handleToggleStatus('en_atencion')}
+                              className={`flex-1 flex items-center justify-center gap-2 rounded-xl py-3 text-xs font-black transition-all ${
+                                assignedBox.estado === 'en_atencion'
+                                  ? 'bg-teal-700 text-white shadow-md ring-2 ring-teal-300'
+                                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                              }`}
+                            >
+                              <span className="h-2.5 w-2.5 rounded-full bg-teal-300 animate-pulse" />
+                              🔴 En Atención (Con Paciente)
+                            </button>
+                          </div>
+
+                          <p className="mt-2 text-[11px] font-semibold text-slate-500">
+                            {assignedBox.estado === 'disponible'
+                              ? '✓ Tu sala aparece en verde (Disponible) en las pantallas de pasillo para que el próximo paciente sepa que puedes atenderlo, manteniendo tu asignación.'
+                              : '✓ Tu sala aparece ocupada (En atención) indicando consulta en progreso.'}
+                          </p>
+                        </div>
                       </div>
 
-                      <div className="mt-4">
-                        <span className="text-xs font-extrabold uppercase text-teal-700 tracking-wider">Ubicación de Atención:</span>
-                        <h2 className="text-5xl font-black tracking-tight text-teal-950 mt-1">
-                          SALA {assignedBox.numero}
-                        </h2>
-                        <p className="text-sm font-black text-teal-800 mt-1">
-                          {assignedBox.especialidad?.nombre || 'Consulta Externa'}
-                        </p>
+                      {/* PANEL DE AGENDA DE PACIENTES DEL PROFESIONAL */}
+                      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                        <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-4 border-slate-100">
+                          <div>
+                            <div className="flex items-center gap-2 text-teal-700 text-xs font-black uppercase tracking-wider">
+                              <CalendarClock size={16} /> Agenda de Pacientes del Día
+                            </div>
+                            <h3 className="text-lg font-black text-slate-900 mt-0.5">Control de Citas y Turnos</h3>
+                          </div>
+                          <button
+                            onClick={() => setShowAddModal(true)}
+                            className="flex items-center gap-1.5 rounded-xl bg-teal-700 px-3.5 py-2 text-xs font-black text-white hover:bg-teal-800 transition-colors shadow-xs"
+                          >
+                            <Plus size={15} /> Agendar Paciente / Bloquear
+                          </button>
+                        </div>
+
+                        {/* Lista de Citas */}
+                        <div className="mt-4 space-y-3">
+                          {agenda.length === 0 ? (
+                            <div className="rounded-xl bg-slate-50 p-6 text-center text-xs font-bold text-slate-500">
+                              No tienes citas registradas para hoy. Usa el botón "+ Agendar Paciente" para agregar pacientes.
+                            </div>
+                          ) : (
+                            agenda.map((item) => (
+                              <div
+                                key={item.id}
+                                className={`rounded-2xl border p-4 transition-all ${
+                                  item.estado === 'en_atencion'
+                                    ? 'border-teal-400 bg-teal-50/70 shadow-sm'
+                                    : item.estado === 'atendido'
+                                    ? 'border-slate-200 bg-slate-50/70 opacity-70'
+                                    : item.bloqueado
+                                    ? 'border-amber-200 bg-amber-50/60'
+                                    : 'border-slate-200 bg-white'
+                                }`}
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="flex items-start gap-3">
+                                    <div className="flex h-10 w-12 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-white font-black text-xs font-mono">
+                                      {item.hora}
+                                    </div>
+                                    <div>
+                                      <div className="flex items-center gap-2">
+                                        <h4 className="font-black text-sm text-slate-900">{item.paciente}</h4>
+                                        {item.bloqueado && (
+                                          <span className="flex items-center gap-1 rounded bg-amber-200 px-1.5 py-0.5 text-[9px] font-black uppercase text-amber-900">
+                                            <Lock size={10} /> Bloqueo
+                                          </span>
+                                        )}
+                                      </div>
+                                      <p className="text-[11px] font-semibold text-slate-500 mt-0.5">
+                                        {item.motivo} {item.rut ? `· RUT: ${item.rut}` : ''}
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  <span
+                                    className={`rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase ${
+                                      item.estado === 'en_atencion'
+                                        ? 'bg-teal-700 text-white animate-pulse'
+                                        : item.estado === 'atendido'
+                                        ? 'bg-emerald-100 text-emerald-800'
+                                        : 'bg-slate-100 text-slate-700'
+                                    }`}
+                                  >
+                                    {item.estado === 'en_atencion' ? 'En Atención' : item.estado === 'atendido' ? '✓ Atendido' : 'Pendiente'}
+                                  </span>
+                                </div>
+
+                                {/* Botones de Acción de Paciente */}
+                                <div className="mt-3 border-t border-slate-200/60 pt-2.5 flex items-center justify-between gap-2">
+                                  <div>
+                                    {item.estado === 'pendiente' && (
+                                      <button
+                                        onClick={() => handleCallPatient(item)}
+                                        className="flex items-center gap-1.5 rounded-xl bg-teal-700 px-3 py-1.5 text-xs font-black text-white hover:bg-teal-800 shadow-2xs"
+                                      >
+                                        <Megaphone size={14} /> Llamar a Sala
+                                      </button>
+                                    )}
+
+                                    {item.estado === 'en_atencion' && (
+                                      <button
+                                        onClick={() => handleFinishPatient(item)}
+                                        className="flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-1.5 text-xs font-black text-white hover:bg-emerald-700 shadow-2xs"
+                                      >
+                                        <Check size={14} /> Finalizar Consulta (Liberar a Disponible)
+                                      </button>
+                                    )}
+
+                                    {item.estado === 'atendido' && (
+                                      <span className="text-xs font-bold text-emerald-700">✓ Consulta finalizada</span>
+                                    )}
+                                  </div>
+
+                                  <button
+                                    onClick={() => handleRemovePatient(item.id)}
+                                    className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg"
+                                    title="Eliminar cita"
+                                  >
+                                    <Trash2 size={15} />
+                                  </button>
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
                       </div>
 
-                      <div className="mt-4 rounded-xl bg-white p-3.5 border border-teal-200 text-xs font-bold text-slate-700 leading-relaxed shadow-2xs">
-                        📍 La Encargada de Piso te asignó la <strong>Sala {assignedBox.numero}</strong>. Los pacientes y la pantalla del pasillo ven tu presencia activa.
-                      </div>
-
-                      <div className="mt-5 space-y-2">
+                      {/* Botones de Cierre de Jornada y Licencia */}
+                      <div className="space-y-2 pt-2 border-t border-slate-200">
                         <button
                           onClick={async () => {
                             try {
                               const attentionId = assignedBox.atencion?.id || `demo-active-${assignedBox.id}`
                               await finishAttention(attentionId)
-                              setMessage(`Has liberado la Sala ${assignedBox.numero}.`)
+                              setMessage(`Has cerrado tu jornada y liberado completamente la Sala ${assignedBox.numero}.`)
                               await refreshData()
                             } catch {
                               setError('No se pudo liberar la sala.')
@@ -281,14 +529,14 @@ export default function ControlBox() {
                           }}
                           className="flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 py-3.5 text-xs font-black text-white shadow-md hover:bg-slate-800 transition-colors"
                         >
-                          <LogOut size={16} /> Finalizar Atención / Liberar Sala {assignedBox.numero}
+                          <LogOut size={16} /> Cerrar Turno Completo / Desocupar Sala {assignedBox.numero}
                         </button>
 
                         <button
                           onClick={() => setShowLeaveModal(true)}
                           className="flex w-full items-center justify-center gap-2 rounded-xl border border-rose-300 bg-rose-50 py-3 text-xs font-black text-rose-800 hover:bg-rose-100 transition-colors"
                         >
-                          <HeartPulse size={16} className="text-rose-600" /> Presentar Licencia Médica / Enfermo (Liberar Sala de Inmediato)
+                          <HeartPulse size={16} className="text-rose-600" /> Presentar Licencia Médica / Justificativo (Liberación Inmediata)
                         </button>
                       </div>
                     </div>
@@ -306,7 +554,7 @@ export default function ControlBox() {
                       </div>
 
                       <p className="mt-3 text-xs font-semibold text-amber-900 leading-relaxed">
-                        Hola <strong>{currentDoctor.nombre}</strong>. La Encargada de Piso aún no te ha asignado una sala. Esta pantalla se actualizará automáticamente apenas te asignen un box.
+                        Hola <strong>{currentDoctor.nombre}</strong>. La Encargada de Piso aún no te ha asignado una sala. Apenas te asignen un box, podrás gestionar tu agenda y llamar pacientes.
                       </p>
 
                       <div className="mt-4 pt-3 border-t border-amber-200">
@@ -322,7 +570,7 @@ export default function ControlBox() {
                 </div>
               ) : (
                 <div className="rounded-2xl bg-slate-100 p-6 text-center text-slate-500 font-bold text-xs">
-                  👈 Selecciona tu nombre de funcionario en la casilla superior para ver tu sala asignada.
+                  👈 Selecciona tu nombre de funcionario en la casilla superior para ver tu sala asignada y agenda.
                 </div>
               )}
             </div>
@@ -378,7 +626,7 @@ export default function ControlBox() {
                     </div>
 
                     <div className="mt-3 border-t border-slate-200/70 pt-2.5 flex items-center justify-between text-xs">
-                      {doc.isOccupied ? (
+                      {doc.isAssigned ? (
                         <div className="flex items-center gap-1.5 font-black text-teal-900">
                           <MapPin size={14} className="text-teal-600 shrink-0" />
                           Ubicado/a en Sala {doc.activeBox?.numero} (Piso {doc.activeBox?.piso || '-'})
@@ -413,6 +661,103 @@ export default function ControlBox() {
           )}
         </section>
       </div>
+
+      {/* MODAL AGREGAR PACIENTE / BLOQUEO DE HORA */}
+      {showAddModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-xs animate-in fade-in">
+          <form onSubmit={handleAddPatientSubmit} className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl">
+            <div className="flex items-center gap-2.5 text-teal-700">
+              <CalendarClock size={24} />
+              <h3 className="text-xl font-black text-slate-900">Agendar Cita o Bloqueo</h3>
+            </div>
+
+            <p className="mt-1 text-xs font-semibold text-slate-500">
+              Programa un paciente o reserva una ventana horaria en tu jornada.
+            </p>
+
+            <div className="mt-4 space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block text-xs font-black uppercase text-slate-700">
+                  Hora de Atención:
+                  <input
+                    type="time"
+                    required
+                    value={newPatientForm.hora}
+                    onChange={(e) => setNewPatientForm({ ...newPatientForm, hora: e.target.value })}
+                    className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-xs font-bold text-slate-900 outline-none focus:border-teal-500"
+                  />
+                </label>
+
+                <label className="block text-xs font-black uppercase text-slate-700">
+                  Tipo / Bloqueo:
+                  <select
+                    value={newPatientForm.bloqueado ? 'bloqueo' : 'paciente'}
+                    onChange={(e) => setNewPatientForm({ ...newPatientForm, bloqueado: e.target.value === 'bloqueo' })}
+                    className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-xs font-bold text-slate-900 outline-none focus:border-teal-500"
+                  >
+                    <option value="paciente">Paciente Clínico</option>
+                    <option value="bloqueo">Bloqueo de Hora / Pausa</option>
+                  </select>
+                </label>
+              </div>
+
+              <label className="block text-xs font-black uppercase text-slate-700">
+                {newPatientForm.bloqueado ? 'Descripción del Bloqueo:' : 'Nombre del Paciente:'}
+                <input
+                  type="text"
+                  required
+                  placeholder={newPatientForm.bloqueado ? 'Ej. Revisión de Fichas / Pausa Colación' : 'Ej. Camila Andrea Vargas'}
+                  value={newPatientForm.paciente}
+                  onChange={(e) => setNewPatientForm({ ...newPatientForm, paciente: e.target.value })}
+                  className="mt-1 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-xs font-bold text-slate-900 outline-none focus:border-teal-500"
+                />
+              </label>
+
+              {!newPatientForm.bloqueado && (
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="block text-xs font-black uppercase text-slate-700">
+                    RUT / Ficha:
+                    <input
+                      type="text"
+                      placeholder="Ej. 19.450.887-3"
+                      value={newPatientForm.rut}
+                      onChange={(e) => setNewPatientForm({ ...newPatientForm, rut: e.target.value })}
+                      className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-xs font-bold text-slate-900 outline-none focus:border-teal-500"
+                    />
+                  </label>
+
+                  <label className="block text-xs font-black uppercase text-slate-700">
+                    Motivo de Consulta:
+                    <input
+                      type="text"
+                      placeholder="Ej. Control de Presión"
+                      value={newPatientForm.motivo}
+                      onChange={(e) => setNewPatientForm({ ...newPatientForm, motivo: e.target.value })}
+                      className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-xs font-bold text-slate-900 outline-none focus:border-teal-500"
+                    />
+                  </label>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-6 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowAddModal(false)}
+                className="flex-1 rounded-xl border border-slate-200 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-100"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                className="flex-1 rounded-xl bg-teal-700 py-2.5 text-xs font-black text-white shadow-md hover:bg-teal-800"
+              >
+                Guardar en Agenda
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
 
       {/* MODAL REGISTRO DE LICENCIA / ENFERMEDAD */}
       {showLeaveModal && (

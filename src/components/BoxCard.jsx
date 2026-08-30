@@ -109,12 +109,17 @@ export default function BoxCard({
           {estado === 'disponible' ? (
             <div className="mt-4">
               <p className="text-xl font-bold uppercase tracking-wide opacity-50">Disponible</p>
-              {proximoMedico && (
+              {medico ? (
+                <p className="mt-2 flex items-center gap-1.5 text-xs font-black text-emerald-700">
+                  <UserRound size={14} className="shrink-0 text-emerald-600" />
+                  Profesional en sala: {medico} (Esperando paciente)
+                </p>
+              ) : proximoMedico ? (
                 <p className="mt-2 flex items-center gap-1.5 text-xs font-extrabold opacity-75">
                   <CalendarClock size={13} className="shrink-0 text-teal-600" />
                   Próximo profesional: {proximoMedico}
                 </p>
-              )}
+              ) : null}
             </div>
           ) : (
             <div className="mt-3">

@@ -72,6 +72,41 @@ export async function loadReports() {
   return { byBox: [...boxMap].map(([box, value]) => ({ box, average: Math.round(value.minutes / value.total) })), byDoctor: [...doctorMap].map(([doctor, total]) => ({ doctor, total })) }
 }
 
+export function getDoctorAgenda(doctorId) {
+  if (typeof window === 'undefined' || !doctorId) return []
+  const storageKey = `cr-ambulatorio-agenda-${doctorId}`
+  const saved = window.localStorage.getItem(storageKey)
+  if (saved) return JSON.parse(saved)
+
+  const defaultAgenda = [
+    { id: `ag-${doctorId}-1`, hora: '08:30', paciente: 'Juan Carlos Morales', rut: '14.238.991-2', motivo: 'Control Clínico', estado: 'atendido', bloqueado: false },
+    { id: `ag-${doctorId}-2`, hora: '09:15', paciente: 'María Teresa González', rut: '16.541.220-K', motivo: 'Evaluación y Ficha', estado: 'pendiente', bloqueado: false },
+    { id: `ag-${doctorId}-3`, hora: '10:00', paciente: 'Bloque Reservado / Procedimiento', rut: '', motivo: 'Revisión de Exámenes', estado: 'pendiente', bloqueado: true },
+    { id: `ag-${doctorId}-4`, hora: '10:45', paciente: 'Roberto Carlos Silva', rut: '18.992.311-5', motivo: 'Consulta Seguimiento', estado: 'pendiente', bloqueado: false },
+    { id: `ag-${doctorId}-5`, hora: '11:30', paciente: 'Camila Andrea Vargas', rut: '19.450.887-3', motivo: 'Primera Atención', estado: 'pendiente', bloqueado: false },
+  ]
+  window.localStorage.setItem(storageKey, JSON.stringify(defaultAgenda))
+  return defaultAgenda
+}
+
+export function saveDoctorAgenda(doctorId, agendaList) {
+  if (typeof window === 'undefined' || !doctorId) return
+  const storageKey = `cr-ambulatorio-agenda-${doctorId}`
+  window.localStorage.setItem(storageKey, JSON.stringify(agendaList))
+  window.dispatchEvent(new CustomEvent('agenda-updated', { detail: { doctorId, agendaList } }))
+}
+
+export async function setBoxAvailability(boxId, estado) {
+  boxId = validateId(boxId, 'Box')
+  const safeStatus = sanitizeStatus(estado)
+  if (!hasSupabase) {
+    saveDemoBoxes(getDemoBoxes().map((box) => box.id === boxId ? { ...box, estado: safeStatus } : box))
+    return
+  }
+  const { error } = await supabase.from('boxes').update({ estado: safeStatus }).eq('id', boxId)
+  if (error) throw error
+}
+
 export async function startAttention(boxId, doctorId, doctorName) {
   checkClientRateLimit('startAttention', 15, 60000)
   boxId = validateId(boxId, 'Box')
