@@ -104,7 +104,7 @@ export default function PantallaPublica() {
         {/* PRO Kiosk Controls Bar */}
         <div className="flex items-center gap-3">
           {/* Live Digital Clock */}
-          <div className={`flex items-center gap-3 rounded-md border px-4 py-2.5 shadow-sm ${isDarkMode ? 'border-slate-800 bg-slate-900 text-slate-200' : 'border-slate-300 bg-white text-slate-800'}`}>
+          <div className="flex items-center gap-3 rounded-md border border-slate-300 bg-white px-4 py-2.5 text-slate-800 shadow-sm">
             <Clock size={20} className="text-teal-600" />
             <div className="text-right">
               <div className="text-lg font-black tracking-tight font-mono">{formattedTime}</div>
