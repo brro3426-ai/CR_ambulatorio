@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Activity, AlertTriangle, CheckCircle2, DoorOpen, LogIn, LogOut, Megaphone, ShieldAlert, Stethoscope, UserRound, X } from 'lucide-react'
-import { finishAttention, loadDoctors, startAttention, triggerPatientCall } from '../lib/dataService'
+import { finishAttention, loadDoctors, setBoxAvailability, startAttention, triggerPatientCall } from '../lib/dataService'
 
 function elapsedTime(timestamp) {
   if (!timestamp) return 'hace un momento'
@@ -84,8 +84,7 @@ export default function QuickBoxModal({ box, onClose, onRefresh }) {
       if (attentionId) {
         await finishAttention(attentionId)
       } else {
-        // Fallback for demo boxes without active attention object
-        await finishAttention(`demo-active-${box.id}`)
+        await setBoxAvailability(box.id, 'disponible')
       }
       setMessage(`Sesión en Box ${box.numero} finalizada. La sala ahora está disponible.`)
       setTimeout(() => {
@@ -122,6 +121,7 @@ export default function QuickBoxModal({ box, onClose, onRefresh }) {
             </div>
             <h2 className="mt-1 text-3xl font-black tracking-tight text-slate-900">Box {box.numero}</h2>
             <p className="text-sm font-semibold text-slate-500">{box.especialidad?.nombre || 'Consulta Externa'}</p>
+            <p className="mt-1 text-xs font-bold text-teal-700">{box.area || 'Área arquitectónica pendiente de configurar'} · {box.capacidad || 1} cupo{Number(box.capacidad || 1) === 1 ? '' : 's'}</p>
           </div>
         </div>
 
@@ -179,7 +179,7 @@ export default function QuickBoxModal({ box, onClose, onRefresh }) {
               <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-900">
                 <ShieldAlert size={20} className="mt-0.5 shrink-0 text-amber-600" />
                 <p className="text-xs font-bold leading-relaxed">
-                  <span className="font-extrabold uppercase">Asignación de sala:</span> Box {box.numero} asignado a <strong className="underline">{box.especialidad?.nombre}</strong>. Solo se permite ingreso de profesionales habilitados.
+                  <span className="font-extrabold uppercase">Asignación de sala:</span> Box {box.numero} pertenece a <strong className="underline">{box.area || 'un área pendiente de configurar'}</strong> y está asignado a <strong className="underline">{box.especialidad?.nombre}</strong>. Solo se permite ingreso de profesionales habilitados.
                 </p>
               </div>
 

@@ -3,6 +3,13 @@ import { demoBoxes, demoDoctors, demoSpecialties } from './demoData'
 import { checkClientRateLimit, sanitizeStatus, sanitizeText, validateId } from './validation'
 
 const DEMO_STORAGE_KEY = 'cr-ambulatorio-demo-boxes'
+const demoMode = import.meta.env.VITE_DEMO_MODE === 'true'
+
+function ensureDataSource() {
+  if (!hasSupabase && !demoMode) {
+    throw new Error('La aplicación oficial requiere conexión con Supabase. Configura VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY.')
+  }
+}
 
 function getDemoBoxes() {
   if (typeof window === 'undefined') return demoBoxes
@@ -17,10 +24,11 @@ export function saveDemoBoxes(boxes) {
 }
 
 export async function loadBoxes() {
+  ensureDataSource()
   if (!hasSupabase) return getDemoBoxes()
   const { data, error } = await supabase
     .from('boxes')
-    .select('*, especialidades(nombre), atenciones(id, medico_id, hora_entrada, hora_salida, medicos(nombre))')
+    .select('*, especialidades(nombre), asignado:medicos!boxes_asignado_medico_id_fkey(id, nombre), atenciones(id, medico_id, hora_entrada, hora_salida, medicos(nombre))')
     .order('numero')
   if (error) throw error
   return data.map((box) => {
@@ -31,10 +39,53 @@ export async function loadBoxes() {
       estado: activeAttention ? 'en_atencion' : (box.estado === 'en_atencion' ? 'disponible' : box.estado),
       especialidad: box.especialidades,
       atencion: activeAttention,
-      medico: activeAttention?.medicos?.nombre || null,
+      medico: activeAttention?.medicos?.nombre || box.asignado?.nombre || null,
+      asignado_medico_id: box.asignado_medico_id || null,
+      tieneAsignado: Boolean(box.asignado_medico_id),
       horaEntrada: activeAttention?.hora_entrada || null,
     }
   })
+}
+
+export async function loadPublicBoxes() {
+  ensureDataSource()
+  if (!hasSupabase) {
+    return getDemoBoxes().map((box) => ({
+      ...box,
+      medico: null,
+      atencion: null,
+      horaEntrada: null,
+      proximoMedico: null,
+    }))
+  }
+
+  const { data, error } = await supabase
+    .from('boxes')
+    .select('id, numero, piso, sector, area, capacidad, especialidad_id, estado, especialidades(nombre)')
+    .order('numero')
+  if (error) throw error
+  return data.map((box) => ({
+    ...box,
+    especialidad: box.especialidades,
+    medico: null,
+    atencion: null,
+    horaEntrada: null,
+    proximoMedico: null,
+  }))
+}
+
+export async function loadAdminPlanUrl() {
+  if (!hasSupabase) return null
+  const buckets = ['CR', 'planos-privados']
+  const paths = ['plano-cr-admin.png', 'cr/plano-cr-admin.png']
+  for (const bucket of buckets) {
+    const storage = supabase.storage.from(bucket)
+    for (const path of paths) {
+      const result = await storage.createSignedUrl(path, 60 * 30)
+      if (!result.error) return result.data.signedUrl
+    }
+  }
+  return null
 }
 
 export async function updateBoxStatus(id, estado) {
@@ -48,7 +99,66 @@ export async function updateBoxStatus(id, estado) {
   if (error) throw error
 }
 
+export async function assignDoctorToBox(boxId, doctorId) {
+  boxId = validateId(boxId, 'Sala')
+  doctorId = validateId(doctorId, 'Profesional')
+  const [boxes, doctors] = await Promise.all([loadBoxes(), loadDoctors()])
+  const box = boxes.find((item) => item.id === boxId)
+  const doctor = doctors.find((item) => item.id === doctorId)
+  if (!box || !doctor) throw new Error('Sala o profesional no encontrado.')
+  if (box.especialidad_id && doctor.especialidad_id && box.especialidad_id !== doctor.especialidad_id) {
+    throw new Error(`Restricción de especialidad: ${doctor.nombre} no puede asignarse a la sala ${box.numero}.`)
+  }
+  if (!hasSupabase) {
+    saveDemoBoxes(getDemoBoxes().map((item) => item.id === boxId ? { ...item, asignado_medico_id: doctorId, medico: doctor.nombre, tieneAsignado: true } : item))
+    return
+  }
+  const { error } = await supabase.from('boxes').update({ asignado_medico_id: doctorId }).eq('id', boxId)
+  if (error) throw error
+}
+
+export async function saveBox(payload, id) {
+  const safePayload = {
+    numero: sanitizeText(payload.numero, 40, 'Identificador de sala'),
+    area: sanitizeText(payload.area, 120, 'Área arquitectónica'),
+    piso: Number(payload.piso) || null,
+    capacidad: Number(payload.capacidad),
+    especialidad_id: payload.especialidad_id ? validateId(payload.especialidad_id, 'Especialidad') : null,
+  }
+  if (!Number.isInteger(safePayload.capacidad) || safePayload.capacidad < 1 || safePayload.capacidad > 100) {
+    throw new Error('La capacidad debe ser un número entre 1 y 100.')
+  }
+
+  if (!hasSupabase) {
+    const currentBoxes = getDemoBoxes()
+    const duplicate = currentBoxes.find((box) => box.numero.toLowerCase() === safePayload.numero.toLowerCase() && box.id.toString() !== id?.toString())
+    if (duplicate) throw new Error('Ya existe una sala con ese identificador.')
+    const specialty = demoSpecialties.find((item) => item.id === safePayload.especialidad_id)
+    const saved = { ...safePayload, id: id || Math.max(0, ...currentBoxes.map((box) => Number(box.id) || 0)) + 1, estado: 'disponible', medico: null, especialidad: specialty ? { nombre: specialty.nombre } : null }
+    saveDemoBoxes(id ? currentBoxes.map((box) => box.id.toString() === id.toString() ? { ...box, ...saved, estado: box.estado, medico: box.medico, atencion: box.atencion, horaEntrada: box.horaEntrada } : box) : [...currentBoxes, saved])
+    return saved
+  }
+
+  const query = id
+    ? supabase.from('boxes').update(safePayload).eq('id', validateId(id, 'Sala'))
+    : supabase.from('boxes').insert(safePayload)
+  const { data, error } = await query.select().single()
+  if (error) throw error
+  return data
+}
+
+export async function deleteBox(id) {
+  const boxId = validateId(id, 'Sala')
+  if (!hasSupabase) {
+    saveDemoBoxes(getDemoBoxes().filter((box) => box.id !== boxId))
+    return
+  }
+  const { error } = await supabase.from('boxes').delete().eq('id', boxId)
+  if (error) throw error
+}
+
 export async function loadDoctors() {
+  ensureDataSource()
   if (!hasSupabase) return demoDoctors
   const { data, error } = await supabase.from('medicos').select('*, especialidades(nombre)').order('nombre')
   if (error) throw error
@@ -56,8 +166,19 @@ export async function loadDoctors() {
 }
 
 export async function loadSpecialties() {
+  ensureDataSource()
   if (!hasSupabase) return demoSpecialties
   const { data, error } = await supabase.from('especialidades').select('*').order('nombre')
+  if (error) throw error
+  return data
+}
+
+export async function loadProtectedPlanGeometry() {
+  if (!hasSupabase) return []
+  const { data, error } = await supabase
+    .from('plano_geometria')
+    .select('tipo, referencia, area, posicion_x, posicion_y, ancho, largo, rotacion')
+    .order('referencia')
   if (error) throw error
   return data
 }
@@ -79,11 +200,11 @@ export function getDoctorAgenda(doctorId) {
   if (saved) return JSON.parse(saved)
 
   const defaultAgenda = [
-    { id: `ag-${doctorId}-1`, hora: '08:30', paciente: 'Juan Carlos Morales', rut: '14.238.991-2', motivo: 'Control Clínico', estado: 'atendido', bloqueado: false },
-    { id: `ag-${doctorId}-2`, hora: '09:15', paciente: 'María Teresa González', rut: '16.541.220-K', motivo: 'Evaluación y Ficha', estado: 'pendiente', bloqueado: false },
-    { id: `ag-${doctorId}-3`, hora: '10:00', paciente: 'Bloque Reservado / Procedimiento', rut: '', motivo: 'Revisión de Exámenes', estado: 'pendiente', bloqueado: true },
-    { id: `ag-${doctorId}-4`, hora: '10:45', paciente: 'Roberto Carlos Silva', rut: '18.992.311-5', motivo: 'Consulta Seguimiento', estado: 'pendiente', bloqueado: false },
-    { id: `ag-${doctorId}-5`, hora: '11:30', paciente: 'Camila Andrea Vargas', rut: '19.450.887-3', motivo: 'Primera Atención', estado: 'pendiente', bloqueado: false },
+    { id: `ag-${doctorId}-1`, hora: '08:30', paciente: 'Paciente Demo 01', rut: '', motivo: 'Control clínico de demostración', estado: 'atendido', bloqueado: false },
+    { id: `ag-${doctorId}-2`, hora: '09:15', paciente: 'Paciente Demo 02', rut: '', motivo: 'Evaluación de demostración', estado: 'pendiente', bloqueado: false },
+    { id: `ag-${doctorId}-3`, hora: '10:00', paciente: 'Bloque Demo / Procedimiento', rut: '', motivo: 'Bloque reservado de demostración', estado: 'pendiente', bloqueado: true },
+    { id: `ag-${doctorId}-4`, hora: '10:45', paciente: 'Paciente Demo 03', rut: '', motivo: 'Consulta de seguimiento demo', estado: 'pendiente', bloqueado: false },
+    { id: `ag-${doctorId}-5`, hora: '11:30', paciente: 'Paciente Demo 04', rut: '', motivo: 'Primera atención demo', estado: 'pendiente', bloqueado: false },
   ]
   window.localStorage.setItem(storageKey, JSON.stringify(defaultAgenda))
   return defaultAgenda
@@ -100,7 +221,20 @@ export async function setBoxAvailability(boxId, estado) {
   boxId = validateId(boxId, 'Box')
   const safeStatus = sanitizeStatus(estado)
   if (!hasSupabase) {
-    saveDemoBoxes(getDemoBoxes().map((box) => box.id === boxId ? { ...box, estado: safeStatus } : box))
+    saveDemoBoxes(
+      getDemoBoxes().map((box) => {
+        if (!(box.id === boxId || box.id.toString() === boxId.toString())) return box
+
+        const nextBox = { ...box, estado: safeStatus }
+
+        if (safeStatus === 'disponible') {
+          nextBox.atencion = null
+          nextBox.horaEntrada = null
+        }
+
+        return nextBox
+      })
+    )
     return
   }
   const { error } = await supabase.from('boxes').update({ estado: safeStatus }).eq('id', boxId)
@@ -127,11 +261,13 @@ export async function startAttention(boxId, doctorId, doctorName) {
   }
 
   if (!hasSupabase) {
-    const attention = { id: `demo-${Date.now()}`, medico_id: doctorId, hora_entrada: new Date().toISOString() }
+    const attention = { id: Date.now(), medico_id: doctorId, hora_entrada: new Date().toISOString() }
     const actualDoctorName = doctorName || doctor?.nombre || 'Profesional asignado'
     saveDemoBoxes(getDemoBoxes().map((b) => b.id === boxId || b.id.toString() === boxId.toString() ? { ...b, estado: 'en_atencion', atencion: attention, medico: actualDoctorName, horaEntrada: attention.hora_entrada } : b))
     return attention
   }
+  const assignment = await supabase.from('boxes').update({ asignado_medico_id: doctorId }).eq('id', boxId)
+  if (assignment.error) throw assignment.error
   const { data, error } = await supabase.from('atenciones').insert({ box_id: boxId, medico_id: doctorId }).select().single()
   if (error) throw error
   return data
@@ -164,8 +300,8 @@ export async function reportMedicalLeave(doctorId, reason = 'Licencia médica / 
   )
 
   if (activeBox) {
-    const attentionId = activeBox.atencion?.id || `demo-active-${activeBox.id}`
-    await finishAttention(attentionId)
+    if (activeBox.atencion?.id) await finishAttention(activeBox.atencion.id)
+    else await setBoxAvailability(activeBox.id, 'disponible')
   }
 
   const msg = `Inasistencia Registrada: ${doctor.nombre} presentó ${reason}.${activeBox ? ` Sala ${activeBox.numero} liberada de inmediato.` : ' Sin sala activa.'}`
@@ -203,6 +339,7 @@ export async function saveCatalogItem(table, payload, id) {
   if (!['medicos', 'especialidades'].includes(table)) throw new Error('Catálogo no permitido.')
   const safePayload = { ...payload, nombre: sanitizeText(payload.nombre, 120, 'Nombre') }
   if (table === 'medicos') safePayload.tipo = sanitizeText(payload.tipo, 30, 'Tipo')
+  if (table === 'medicos') safePayload.cargo = payload.cargo ? sanitizeText(payload.cargo, 80, 'Cargo') : null
   if (!hasSupabase) return { ...safePayload, id: id || `demo-${Date.now()}` }
   const query = id ? supabase.from(table).update(safePayload).eq('id', validateId(id, 'Registro')) : supabase.from(table).insert(safePayload)
   const { data, error } = await query.select().single()
@@ -230,7 +367,6 @@ export async function triggerPatientCall(boxNumero, especialidadNombre, paciente
   const eventData = {
     boxNumero: sanitizeText(boxNumero, 30, 'Box'),
     especialidadNombre: sanitizeText(especialidadNombre, 120, 'Especialidad'),
-    pacienteTicket: pacienteTicket ? sanitizeText(pacienteTicket, 30, 'Ticket') : '',
     timestamp: Date.now(),
   }
   if (typeof window !== 'undefined') {

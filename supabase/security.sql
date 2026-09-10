@@ -76,6 +76,13 @@ create policy "public read especialidades" on especialidades for select to anon,
 drop policy if exists "public read boxes" on boxes;
 create policy "public read boxes" on boxes for select to anon, authenticated using (true);
 
+drop policy if exists "authenticated manage boxes" on boxes;
+create policy "authenticated manage boxes" on boxes for all to authenticated using (
+  auth.role() = 'authenticated'
+) with check (
+  auth.role() = 'authenticated'
+);
+
 drop policy if exists "public read medicos" on medicos;
 create policy "public read medicos" on medicos for select to anon, authenticated using (true);
 

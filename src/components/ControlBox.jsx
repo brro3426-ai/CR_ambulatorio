@@ -4,13 +4,27 @@ import { Link, useParams } from 'react-router-dom'
 import { finishAttention, getDoctorAgenda, getMedicalLeaves, loadBoxes, loadDoctors, reportMedicalLeave, saveDoctorAgenda, setBoxAvailability, triggerPatientCall, triggerSupervisorNotice } from '../lib/dataService'
 import { hasSupabase, supabase } from '../lib/supabaseClient'
 
+const demoMode = import.meta.env.VITE_DEMO_MODE === 'true'
+
+function occupationLabel(person) {
+  if (person.cargo) return person.cargo
+  if (person.tipo === 'kinesiologo') return 'Kinesiólogo/a'
+  if (person.tipo === 'dermatologo') return 'Dermatólogo/a'
+  if (person.tipo === 'cardiologo') return 'Cardiólogo/a'
+  return 'Médico/a'
+}
+
 export default function ControlBox() {
   const { numero } = useParams()
+  const [session, setSession] = useState(null)
+  const [authLoading, setAuthLoading] = useState(hasSupabase)
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [boxes, setBoxes] = useState([])
   const [doctors, setDoctors] = useState([])
   const [medicalLeaves, setMedicalLeaves] = useState(() => getMedicalLeaves())
   const [selectedDoctorId, setSelectedDoctorId] = useState(() => {
-    if (typeof window !== 'undefined') {
+    if (demoMode && typeof window !== 'undefined') {
       return window.localStorage.getItem('cr-ambulatorio-doctor-id') || ''
     }
     return ''
@@ -36,13 +50,48 @@ export default function ControlBox() {
   const [showLeaveModal, setShowLeaveModal] = useState(false)
   const [leaveReason, setLeaveReason] = useState('Licencia médica / Reposo por salud')
 
+  useEffect(() => {
+    if (!hasSupabase) {
+      setAuthLoading(false)
+      return undefined
+    }
+
+    let mounted = true
+    supabase.auth.getSession().then(({ data }) => {
+      if (mounted) {
+        setSession(data.session)
+        setAuthLoading(false)
+      }
+    })
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession)
+      setAuthLoading(false)
+    })
+
+    return () => {
+      mounted = false
+      listener.subscription.unsubscribe()
+    }
+  }, [])
+
+  async function login(event) {
+    event.preventDefault()
+    setError('')
+    const { error: loginError } = await supabase.auth.signInWithPassword({ email, password })
+    if (loginError) setError('No se pudo iniciar sesión. Verifica tus credenciales institucionales.')
+  }
+
   const refreshData = async () => {
     try {
       const [nextBoxes, nextDoctors] = await Promise.all([loadBoxes(), loadDoctors()])
       setBoxes(nextBoxes)
       setDoctors(nextDoctors)
       setMedicalLeaves(getMedicalLeaves())
-      if (selectedDoctorId) {
+      if (hasSupabase && session) {
+        const linkedDoctor = nextDoctors.find((doctor) => doctor.user_id === session.user.id)
+        if (linkedDoctor && linkedDoctor.id.toString() !== selectedDoctorId.toString()) setSelectedDoctorId(linkedDoctor.id.toString())
+        if (linkedDoctor) setAgenda(getDoctorAgenda(linkedDoctor.id))
+      } else if (selectedDoctorId) {
         setAgenda(getDoctorAgenda(selectedDoctorId))
       }
     } catch {
@@ -79,7 +128,7 @@ export default function ControlBox() {
       window.removeEventListener('storage', handleDemo)
       window.removeEventListener('agenda-updated', handleDemo)
     }
-  }, [selectedDoctorId])
+  }, [selectedDoctorId, session])
 
   function handleSelectDoctor(id) {
     setSelectedDoctorId(id)
@@ -101,9 +150,15 @@ export default function ControlBox() {
     return doctors.find((d) => d.id.toString() === selectedDoctorId.toString())
   }, [doctors, selectedDoctorId])
 
+  const qrBox = useMemo(() => {
+    if (!numero) return null
+    return boxes.find((box) => box.numero?.toLowerCase() === numero.toLowerCase()) || null
+  }, [boxes, numero])
+
   // Active room assigned to this doctor (whether in attention or available waiting)
   const assignedBox = useMemo(() => {
     if (!currentDoctor) return null
+    if (qrBox) return qrBox
     return boxes.find(
       (b) =>
         b.medico === currentDoctor.nombre ||
@@ -111,7 +166,7 @@ export default function ControlBox() {
         b.atencion?.medico_id === currentDoctor.id ||
         b.atencion?.medico_id?.toString() === currentDoctor.id?.toString()
     )
-  }, [boxes, currentDoctor])
+  }, [boxes, currentDoctor, qrBox])
 
   // Map each doctor to their live location or medical leave status
   const roster = useMemo(() => {
@@ -151,6 +206,18 @@ export default function ControlBox() {
     if (!assignedBox) return
     try {
       await setBoxAvailability(assignedBox.id, newStatus)
+      setBoxes((currentBoxes) =>
+        currentBoxes.map((box) =>
+          box.id === assignedBox.id
+            ? {
+                ...box,
+                estado: newStatus,
+                atencion: newStatus === 'disponible' ? null : box.atencion,
+                horaEntrada: newStatus === 'disponible' ? null : box.horaEntrada,
+              }
+            : box
+        )
+      )
       setMessage(newStatus === 'disponible' ? '✓ Sala marcada como DISPONIBLE (Lista para recibir paciente).' : '✓ Sala marcada EN ATENCIÓN (Consulta en curso).')
       refreshData()
     } catch (err) {
@@ -189,6 +256,13 @@ export default function ControlBox() {
 
       // AUTOMATICALLY set room to 'disponible' while KEEPING room assigned to the doctor!
       await setBoxAvailability(assignedBox.id, 'disponible')
+      setBoxes((currentBoxes) =>
+        currentBoxes.map((box) =>
+          box.id === assignedBox.id
+            ? { ...box, estado: 'disponible', atencion: null, horaEntrada: null }
+            : box
+        )
+      )
 
       setMessage(`✓ Atención de ${item.paciente} finalizada. La Sala ${assignedBox.numero} ahora aparece DISPONIBLE (en verde) para tu próximo paciente.`)
       refreshData()
@@ -238,6 +312,45 @@ export default function ControlBox() {
     }
   }
 
+  if (authLoading) {
+    return (
+      <main className="grid min-h-screen place-items-center bg-[#f6f7f3] text-slate-500">
+        <div className="flex items-center gap-2 font-bold"><RefreshCw className="animate-spin" /> Verificando acceso institucional...</div>
+      </main>
+    )
+  }
+
+  if (!hasSupabase && !demoMode) {
+    return (
+      <main className="grid min-h-screen place-items-center bg-[#f6f7f3] p-5">
+        <div className="w-full max-w-lg rounded-3xl border border-amber-200 bg-white p-8 shadow-xl">
+          <h1 className="text-2xl font-black text-slate-900">Portal no disponible</h1>
+          <p className="mt-3 text-sm font-semibold text-slate-600">El portal oficial requiere conexión con Supabase.</p>
+        </div>
+      </main>
+    )
+  }
+
+  if (hasSupabase && !session) {
+    return (
+      <main className="grid min-h-screen place-items-center bg-[#f6f7f3] p-5">
+        <form onSubmit={login} className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-8 shadow-xl">
+          <span className="text-[11px] font-black uppercase tracking-[0.2em] text-teal-700">Acceso institucional</span>
+          <h1 className="mt-2 text-3xl font-black tracking-tight text-slate-900">Portal del Funcionario</h1>
+          <p className="mt-2 text-sm font-semibold text-slate-500">Ingresa con tu cuenta institucional para ver solo tu sala y agenda.</p>
+          <label className="mt-6 block text-xs font-extrabold uppercase tracking-wider text-slate-600">Correo
+            <input type="email" required value={email} onChange={(event) => setEmail(event.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-900 outline-none focus:border-teal-500" />
+          </label>
+          <label className="mt-4 block text-xs font-extrabold uppercase tracking-wider text-slate-600">Contraseña
+            <input type="password" required value={password} onChange={(event) => setPassword(event.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-900 outline-none focus:border-teal-500" />
+          </label>
+          <button className="mt-5 w-full rounded-xl bg-slate-950 px-4 py-3.5 text-sm font-black text-white hover:bg-teal-700">Ingresar al portal</button>
+          {error && <p className="mt-4 text-xs font-bold text-rose-600">{error}</p>}
+        </form>
+      </main>
+    )
+  }
+
   if (loading) {
     return (
       <main className="grid min-h-screen place-items-center bg-[#f6f7f3] text-slate-500">
@@ -268,23 +381,32 @@ export default function ControlBox() {
             </div>
           </div>
 
-          {/* Identification Dropdown (Logged In Doctor Selector) */}
+          {/* Demo identity selector or authenticated professional identity */}
           <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-600">
-              Identificación de Funcionario:
-              <select
-                value={selectedDoctorId}
-                onChange={(e) => handleSelectDoctor(e.target.value)}
-                className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-teal-500"
-              >
-                <option value="">-- Seleccionar mi cuenta de Funcionario --</option>
-                {doctors.map((doc) => (
-                  <option key={doc.id} value={doc.id}>
-                    {doc.nombre} ({doc.tipo === 'kinesiologo' ? 'Kinesiólogo/a' : doc.tipo === 'dermatologo' ? 'Dermatólogo/a' : doc.tipo === 'cardiologo' ? 'Cardiólogo/a' : 'Médico/a'})
-                  </option>
-                ))}
-              </select>
-            </label>
+            {demoMode ? (
+              <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-600">
+                Identificación de Funcionario:
+                <select
+                  value={selectedDoctorId}
+                  onChange={(event) => handleSelectDoctor(event.target.value)}
+                  className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-teal-500"
+                >
+                  <option value="">-- Seleccionar mi cuenta de Funcionario --</option>
+                  {doctors.map((doc) => (
+                    <option key={doc.id} value={doc.id}>
+                      {doc.nombre} ({doc.tipo === 'kinesiologo' ? 'Kinesiólogo/a' : doc.tipo === 'dermatologo' ? 'Dermatólogo/a' : doc.tipo === 'cardiologo' ? 'Cardiólogo/a' : 'Médico/a'})
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <div className="text-xs font-extrabold uppercase tracking-wider text-slate-600">
+                Cuenta institucional vinculada
+                <p className="mt-2 rounded-xl border border-teal-200 bg-white p-3 text-sm font-bold normal-case text-teal-900">
+                  {currentDoctor ? `${currentDoctor.nombre} · ${currentDoctor.especialidad_nombre || 'Sin especialidad'}` : 'Tu cuenta aún no está vinculada a un profesional.'}
+                </p>
+              </div>
+            )}
 
             {currentDoctor && (
               <div className="mt-3 flex items-center justify-between rounded-xl bg-white p-3 border border-slate-200/80 text-xs">
@@ -297,6 +419,14 @@ export default function ControlBox() {
                 <span className="rounded-full bg-teal-100 px-2.5 py-0.5 text-[10px] font-black uppercase text-teal-800">
                   Identificado
                 </span>
+              </div>
+            )}
+
+            {numero && (
+              <div className={`mt-3 rounded-xl border p-3 text-xs font-bold ${qrBox ? 'border-teal-200 bg-teal-50 text-teal-900' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>
+                {qrBox
+                  ? <>{demoMode ? <>QR activo para <strong>Box {qrBox.numero}</strong>. Selecciona tu nombre para gestionar esta sala.</> : <>QR activo para <strong>Box {qrBox.numero}</strong>. Tu cuenta institucional controla esta sala si está asignada.</>}</>
+                  : <>No encontramos el Box <strong>{numero}</strong>. Verifica que el QR corresponda a una sala vigente.</>}
               </div>
             )}
           </div>
@@ -317,7 +447,7 @@ export default function ControlBox() {
                 activeTab === 'companeros' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              <Users size={16} /> Dónde están mis Compañeros ({doctors.length})
+              <Users size={16} /> Equipo de trabajo
             </button>
           </nav>
 
@@ -519,8 +649,9 @@ export default function ControlBox() {
                         <button
                           onClick={async () => {
                             try {
-                              const attentionId = assignedBox.atencion?.id || `demo-active-${assignedBox.id}`
-                              await finishAttention(attentionId)
+                              const attentionId = assignedBox.atencion?.id
+                              if (attentionId) await finishAttention(attentionId)
+                              else await setBoxAvailability(assignedBox.id, 'disponible')
                               setMessage(`Has cerrado tu jornada y liberado completamente la Sala ${assignedBox.numero}.`)
                               await refreshData()
                             } catch {
@@ -605,7 +736,7 @@ export default function ControlBox() {
                     <div className="flex items-start justify-between">
                       <div>
                         <span className="rounded bg-white px-2 py-0.5 text-[9px] font-black uppercase text-slate-700 shadow-2xs">
-                          {doc.tipo === 'kinesiologo' ? 'Kinesiólogo/a' : doc.tipo === 'dermatologo' ? 'Dermatólogo/a' : doc.tipo === 'cardiologo' ? 'Cardiólogo/a' : 'Médico/a'}
+                          {occupationLabel(doc)}
                         </span>
                         <h4 className="mt-1 text-sm font-black text-slate-900">{doc.nombre}</h4>
                         <p className="text-[11px] font-semibold text-slate-500">{doc.especialidad_nombre || 'General'}</p>
@@ -719,7 +850,7 @@ export default function ControlBox() {
                     RUT / Ficha:
                     <input
                       type="text"
-                      placeholder="Ej. 19.450.887-3"
+                      placeholder="Ej. FICHA-DEMO-01"
                       value={newPatientForm.rut}
                       onChange={(e) => setNewPatientForm({ ...newPatientForm, rut: e.target.value })}
                       className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-xs font-bold text-slate-900 outline-none focus:border-teal-500"

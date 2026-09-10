@@ -4,16 +4,16 @@ import { Activity, CalendarClock, DoorOpen, MousePointerClick, Stethoscope, User
 const states = {
   disponible: {
     label: 'DISPONIBLE',
-    badgeClass: 'bg-emerald-600 text-white border-emerald-700 shadow-sm',
-    lightClass: 'border-emerald-300 bg-white text-slate-900 shadow-xs hover:border-emerald-500 hover:shadow-md',
+    badgeClass: 'bg-emerald-700 text-white border-emerald-800',
+    lightClass: 'border-slate-200 bg-white text-slate-900 shadow-sm hover:border-emerald-500 hover:shadow-md',
     darkClass: 'border-emerald-800/80 bg-slate-900 text-slate-100 hover:border-emerald-500',
     dot: 'bg-emerald-500',
     dotGlow: 'bg-emerald-400 animate-pulse',
   },
   en_atencion: {
     label: 'OCUPADO / EN ATENCIÓN',
-    badgeClass: 'bg-rose-600 text-white border-rose-700 shadow-sm animate-pulse',
-    lightClass: 'border-rose-300 bg-rose-50/40 text-slate-900 shadow-sm hover:border-rose-500 hover:shadow-md',
+    badgeClass: 'bg-rose-700 text-white border-rose-800 animate-pulse',
+    lightClass: 'border-rose-300 bg-white text-slate-900 shadow-sm hover:border-rose-500 hover:shadow-md',
     darkClass: 'border-rose-800/80 bg-rose-950/30 text-rose-100 hover:border-rose-500',
     dot: 'bg-rose-500',
     dotGlow: 'bg-rose-400 animate-ping',
@@ -68,7 +68,7 @@ export default function BoxCard({
       onClick={onClick}
       role={onClick ? 'button' : undefined}
       tabIndex={onClick ? 0 : undefined}
-      className={`group relative flex flex-col justify-between overflow-hidden rounded-2xl border-2 p-5 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl ${onClick ? 'cursor-pointer' : ''} ${cardTheme}`}
+      className={`group relative flex flex-col justify-between overflow-hidden rounded-md border p-5 shadow-sm transition-all duration-200 hover:shadow-md ${onClick ? 'cursor-pointer' : ''} ${cardTheme}`}
     >
       <div className={`absolute left-0 top-0 h-full w-1.5 ${current.dot}`} />
 
@@ -83,12 +83,12 @@ export default function BoxCard({
                 </span>
               )}
             </div>
-            <h3 className="mt-1 text-4xl font-black tracking-tight">{numero}</h3>
+            <h3 className="mt-1 text-3xl font-black tracking-tight">{numero}</h3>
           </div>
 
           <div className="flex items-center gap-2">
             {/* BADGE DE ESTADO GIGANTE Y VISIBLE: DISPONIBLE vs OCUPADO */}
-            <span className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-black uppercase tracking-wider ${current.badgeClass}`}>
+            <span className={`inline-flex items-center gap-1.5 rounded-sm border px-3 py-1.5 text-[11px] font-black uppercase tracking-wider ${current.badgeClass}`}>
               <span className={`h-2 w-2 rounded-full bg-white`} />
               {estado === 'en_atencion' ? 'OCUPADO' : estado === 'disponible' ? 'DISPONIBLE' : 'FUERA DE SERVICIO'}
             </span>
@@ -118,7 +118,7 @@ export default function BoxCard({
                     <UserRound size={17} className="text-emerald-700" />
                     {medico}
                   </p>
-                  <span className="text-[11px] font-bold text-emerald-700 mt-1 block">🟢 Sala Libre · Esperando llamado de paciente</span>
+                  <span className="text-[11px] font-bold text-emerald-700 mt-1 block">Sala libre · Esperando llamado de paciente</span>
                 </div>
               ) : proximoMedico ? (
                 <p className="mt-2 flex items-center gap-1.5 text-xs font-extrabold opacity-75">
@@ -137,7 +137,7 @@ export default function BoxCard({
                   <UserRound size={17} className="text-rose-700" />
                   {medico || 'Profesional asignado'}
                 </p>
-                <span className="text-[11px] font-black text-rose-700 mt-1 block">🔴 Paciente en atención dentro de sala</span>
+                <span className="text-[11px] font-black text-rose-700 mt-1 block">Paciente en atención dentro de sala</span>
               </div>
               <div className="mt-2 flex items-center gap-2">
                 <p className="text-xs font-bold opacity-70">
@@ -162,7 +162,7 @@ export default function BoxCard({
       <div className="mt-4 border-t border-current/10 pt-3 pl-2 flex items-center justify-between">
         <p className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-extrabold uppercase tracking-wide ${isDarkMode ? 'bg-black/40' : 'bg-white/60'}`}>
           <span className={`h-2.5 w-2.5 rounded-full ${current.dot}`} />
-          {estado === 'en_atencion' ? '🔴 OCUPADO' : estado === 'disponible' ? '🟢 DISPONIBLE' : '⚪ FUERA DE SERVICIO'}
+          {estado === 'en_atencion' ? 'OCUPADO' : estado === 'disponible' ? 'DISPONIBLE' : 'FUERA DE SERVICIO'}
         </p>
         {onClick && (
           <span className="text-xs font-extrabold opacity-75 group-hover:underline">

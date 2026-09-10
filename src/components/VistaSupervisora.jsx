@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ArrowLeft, BellRing, Building2, Crown, DoorOpen, HeartPulse, MapPin, Radio, ShieldCheck, Stethoscope, UserCheck, UserX } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { finishAttention, getMedicalLeaves, loadBoxes, loadDoctors, reportMedicalLeave, startAttention, triggerSupervisorNotice } from '../lib/dataService'
+import { finishAttention, getMedicalLeaves, loadBoxes, loadDoctors, reportMedicalLeave, setBoxAvailability, startAttention, triggerSupervisorNotice } from '../lib/dataService'
 import { hasSupabase, supabase } from '../lib/supabaseClient'
 
 export default function VistaSupervisora() {
@@ -292,8 +292,9 @@ export default function VistaSupervisora() {
                         {doc.isOccupied ? (
                           <button
                             onClick={async () => {
-                              const attentionId = doc.activeBox.atencion?.id || `demo-active-${doc.activeBox.id}`
-                              await finishAttention(attentionId)
+                              const attentionId = doc.activeBox.atencion?.id
+                              if (attentionId) await finishAttention(attentionId)
+                              else await setBoxAvailability(doc.activeBox.id, 'disponible')
                               await triggerSupervisorNotice(`Sala ${doc.activeBox.numero} liberada por la encargada de piso`, 'Encargada de Piso')
                               refreshData()
                             }}

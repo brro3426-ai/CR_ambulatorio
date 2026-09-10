@@ -1,13 +1,17 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { AlertTriangle, ArrowLeft, BarChart3, BellRing, BrainCircuit, Clock, Crown, Download, HeartPulse, LogIn, LogOut, MapPin, Pencil, Plus, QrCode, Radio, Settings2, ShieldAlert, Sparkles, Trash2, TrendingUp, UserCheck, Zap } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { hasSupabase, supabase } from '../lib/supabaseClient'
-import { deleteCatalogItem, finishAttention, getMedicalLeaves, loadBoxes, loadDetailedReport, loadDoctors, loadReports, loadSpecialties, listShifts, reportMedicalLeave, saveCatalogItem, saveShift, startAttention, triggerSupervisorNotice, updateBoxStatus } from '../lib/dataService'
+import { assignDoctorToBox, deleteBox, deleteCatalogItem, finishAttention, getMedicalLeaves, loadAdminPlanUrl, loadBoxes, loadDetailedReport, loadDoctors, loadProtectedPlanGeometry, loadReports, loadSpecialties, listShifts, reportMedicalLeave, saveBox, saveCatalogItem, saveShift, setBoxAvailability, startAttention, triggerSupervisorNotice, updateBoxStatus } from '../lib/dataService'
 import FiltroEspecialidad from './FiltroEspecialidad'
 import QrModal from './QrModal'
 
+const Operational3DMap = lazy(() => import('./Operational3DMap'))
+
 const statuses = ['disponible', 'en_atencion', 'fuera_servicio']
-const emptyForm = { nombre: '', tipo: 'medico', especialidad_id: '' }
+const emptyForm = { nombre: '', tipo: 'medico', cargo: '', especialidad_id: '' }
+const emptyBoxForm = { numero: '', area: '', piso: '', capacidad: '1', especialidad_id: '' }
+const architecturalAreas = ['Medicina Interna Broncopulmonar', 'Diabetología', 'Cuidados Paliativos', 'Unidad TACO', 'Rehabilitación Pulmonar y Kine', 'UNACES', 'Pediatría']
 const demoMode = import.meta.env.VITE_DEMO_MODE === 'true'
 
 export default function PanelAdmin() {
@@ -16,6 +20,8 @@ export default function PanelAdmin() {
   const [password, setPassword] = useState('')
   const [boxes, setBoxes] = useState([])
   const [doctors, setDoctors] = useState([])
+  const [planGeometry, setPlanGeometry] = useState([])
+  const [adminPlanUrl, setAdminPlanUrl] = useState(null)
   const [specialties, setSpecialties] = useState([])
   const [shifts, setShifts] = useState([])
   const [reports, setReports] = useState({ byBox: [], byDoctor: [] })
@@ -23,6 +29,9 @@ export default function PanelAdmin() {
   const [tab, setTab] = useState('supervisora')
   const [form, setForm] = useState(emptyForm)
   const [editing, setEditing] = useState(null)
+  const [boxForm, setBoxForm] = useState(emptyBoxForm)
+  const [editingBoxId, setEditingBoxId] = useState(null)
+  const [isBoxEditorOpen, setIsBoxEditorOpen] = useState(false)
   const [message, setMessage] = useState('')
   const [activeQrBox, setActiveQrBox] = useState(null)
 
@@ -35,13 +44,15 @@ export default function PanelAdmin() {
 
   useEffect(() => {
     if ((hasSupabase && session) || (!hasSupabase && demoMode)) {
-      Promise.all([loadBoxes(), loadDoctors(), loadSpecialties(), listShifts(), loadReports()])
-        .then(([loadedBoxes, loadedDoctors, loadedSpecialties, loadedShifts, loadedReports]) => {
+      Promise.all([loadBoxes(), loadDoctors(), loadSpecialties(), listShifts(), loadReports(), loadProtectedPlanGeometry(), loadAdminPlanUrl().catch(() => null)])
+        .then(([loadedBoxes, loadedDoctors, loadedSpecialties, loadedShifts, loadedReports, loadedPlanGeometry, loadedAdminPlanUrl]) => {
           setBoxes(loadedBoxes)
           setDoctors(loadedDoctors)
           setSpecialties(loadedSpecialties)
           setShifts(loadedShifts)
           setReports(loadedReports)
+          setPlanGeometry(loadedPlanGeometry)
+          setAdminPlanUrl(loadedAdminPlanUrl)
         })
         .catch((err) => {
           console.error('Error cargando panel:', err)
@@ -52,6 +63,16 @@ export default function PanelAdmin() {
 
   const names = specialties.map((item) => item.nombre)
   const visible = boxes.filter((box) => filter === 'todas' || box.especialidad?.nombre === filter)
+  const areaSummary = boxes.reduce((summary, box) => {
+    const area = box.area || 'Sin área arquitectónica'
+    const current = summary[area] || { rooms: 0, capacity: 0, available: 0, occupied: 0 }
+    current.rooms += 1
+    current.capacity += Number(box.capacidad) || 1
+    if (box.estado === 'disponible') current.available += 1
+    if (box.estado === 'en_atencion') current.occupied += 1
+    summary[area] = current
+    return summary
+  }, {})
 
   async function login(event) {
     event.preventDefault()
@@ -72,10 +93,10 @@ export default function PanelAdmin() {
   async function assignDoctor(box, doctorId) {
     if (!doctorId) return
     try {
-      await startAttention(box.id, doctorId)
+      await assignDoctorToBox(box.id, doctorId)
       const refreshed = await loadBoxes()
       setBoxes(refreshed)
-      setMessage('Profesional asignado a la sala')
+      setMessage('Profesional asignado a la sala: disponible para iniciar atención')
     } catch (err) {
       setMessage(err.message || 'No se pudo asignar el profesional')
     }
@@ -83,7 +104,8 @@ export default function PanelAdmin() {
 
   async function releaseBox(box) {
     try {
-      await finishAttention(box.atencion?.id || `demo-active-${box.id}`)
+      if (box.atencion?.id) await finishAttention(box.atencion.id)
+      else await setBoxAvailability(box.id, 'disponible')
       const refreshed = await loadBoxes()
       setBoxes(refreshed)
       setMessage('Sala liberada')
@@ -92,9 +114,46 @@ export default function PanelAdmin() {
     }
   }
 
+  function openBoxEditor(box = null) {
+    setEditingBoxId(box?.id || null)
+    setBoxForm(box ? {
+      numero: box.numero || '',
+      area: box.area || '',
+      piso: box.piso || '',
+      capacidad: box.capacidad || 1,
+      especialidad_id: box.especialidad_id || '',
+    } : emptyBoxForm)
+    setIsBoxEditorOpen(true)
+  }
+
+  async function submitBox(event) {
+    event.preventDefault()
+    try {
+      await saveBox(boxForm, editingBoxId)
+      setBoxes(await loadBoxes())
+      setBoxForm(emptyBoxForm)
+      setEditingBoxId(null)
+      setIsBoxEditorOpen(false)
+      setMessage('Sala guardada correctamente')
+    } catch (err) {
+      setMessage(err.message || 'No se pudo guardar la sala')
+    }
+  }
+
+  async function removeBox(box) {
+    if (!window.confirm(`¿Eliminar la sala ${box.numero}? También se eliminarán sus turnos y atenciones asociadas.`)) return
+    try {
+      await deleteBox(box.id)
+      setBoxes(await loadBoxes())
+      setMessage('Sala eliminada')
+    } catch (err) {
+      setMessage(err.message || 'No se pudo eliminar la sala')
+    }
+  }
+
   function editItem(item, type) {
     setEditing({ type, id: item.id })
-    setForm({ nombre: item.nombre || '', tipo: item.tipo || 'medico', especialidad_id: item.especialidad_id || '' })
+    setForm({ nombre: item.nombre || '', tipo: item.tipo || 'medico', cargo: item.cargo || '', especialidad_id: item.especialidad_id || '' })
   }
 
   async function submitItem(event) {
@@ -103,7 +162,7 @@ export default function PanelAdmin() {
     const chosenSpec = specialties.find((s) => s.id.toString() === form.especialidad_id.toString())
     const payload =
       editing?.type === 'doctor'
-        ? { nombre: form.nombre, tipo: form.tipo, especialidad_id: Number(form.especialidad_id) || null }
+        ? { nombre: form.nombre, tipo: form.tipo, cargo: form.cargo, especialidad_id: Number(form.especialidad_id) || null }
         : { nombre: form.nombre }
 
     try {
@@ -231,6 +290,7 @@ export default function PanelAdmin() {
       <nav className="mx-auto mt-6 flex max-w-7xl gap-2 overflow-x-auto border-b border-slate-200 pb-2">
         {[
           ['supervisora', '👑 Encargada de Piso'],
+          ['mapa-3d', 'Mapa 3D'],
           ['boxes', 'Salas / QR'],
           ['catalogo', 'Profesionales / Catálogo'],
           ['turnos', 'Turnos'],
@@ -259,19 +319,86 @@ export default function PanelAdmin() {
         />
       )}
 
+      {tab === 'mapa-3d' && (
+        <Suspense fallback={<div className="mx-auto mt-7 max-w-7xl border border-slate-200 bg-white p-8 text-sm font-bold text-slate-600">Cargando mapa operativo...</div>}>
+          <Operational3DMap
+            boxes={boxes}
+            geometry={planGeometry}
+            planUrl={adminPlanUrl}
+            onManageRoom={(box) => {
+              setFilter(box.especialidad?.nombre || 'todas')
+              setTab('boxes')
+            }}
+          />
+        </Suspense>
+      )}
+
       {tab === 'boxes' && (
         <section className="mx-auto mt-7 max-w-7xl">
-          <div className="mb-4 flex justify-end">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <button onClick={() => openBoxEditor()} className="inline-flex items-center gap-2 rounded-lg bg-teal-700 px-4 py-2.5 text-sm font-black text-white shadow-sm hover:bg-teal-800">
+              <Plus size={16} /> Agregar sala
+            </button>
             <FiltroEspecialidad value={filter} onChange={setFilter} specialties={names} />
           </div>
+
+          <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {Object.entries(areaSummary).map(([area, summary]) => (
+              <div key={area} className="border border-slate-200 bg-white p-4 shadow-sm">
+                <p className="text-xs font-black uppercase tracking-wider text-teal-700">{area}</p>
+                <div className="mt-3 flex items-end justify-between gap-3">
+                  <p className="text-2xl font-black text-slate-950">{summary.rooms} <span className="text-sm font-bold text-slate-500">salas</span></p>
+                  <p className="text-sm font-bold text-slate-600">{summary.capacity} cupos</p>
+                </div>
+                <p className="mt-2 text-xs font-bold text-slate-500">{summary.available} disponibles · {summary.occupied} en atención</p>
+              </div>
+            ))}
+          </div>
+
+          {isBoxEditorOpen && (
+            <form onSubmit={submitBox} className="mb-5 border border-teal-200 bg-teal-50 p-5 shadow-sm">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-wider text-teal-700">Inventario arquitectónico</p>
+                  <h2 className="mt-1 text-xl font-black text-slate-950">{editingBoxId ? 'Editar sala' : 'Registrar sala del CR'}</h2>
+                </div>
+                <button type="button" onClick={() => setIsBoxEditorOpen(false)} className="text-xs font-bold text-slate-600 hover:text-slate-950">Cancelar</button>
+              </div>
+              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                <label className="text-xs font-bold uppercase text-slate-600">Identificador
+                  <input required value={boxForm.numero} onChange={(event) => setBoxForm({ ...boxForm, numero: event.target.value })} placeholder="Ej: A-003" className="mt-1 block w-full border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900" />
+                </label>
+                <label className="text-xs font-bold uppercase text-slate-600">Área arquitectónica
+                  <select required value={boxForm.area} onChange={(event) => setBoxForm({ ...boxForm, area: event.target.value })} className="mt-1 block w-full border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900">
+                    <option value="">Seleccionar área</option>
+                    {architecturalAreas.map((area) => <option key={area} value={area}>{area}</option>)}
+                  </select>
+                </label>
+                <label className="text-xs font-bold uppercase text-slate-600">Especialidad
+                  <select value={boxForm.especialidad_id} onChange={(event) => setBoxForm({ ...boxForm, especialidad_id: event.target.value })} className="mt-1 block w-full border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900">
+                    <option value="">Sin restricción</option>
+                    {specialties.map((specialty) => <option key={specialty.id} value={specialty.id}>{specialty.nombre}</option>)}
+                  </select>
+                </label>
+                <label className="text-xs font-bold uppercase text-slate-600">Piso
+                  <input min="0" max="99" type="number" value={boxForm.piso} onChange={(event) => setBoxForm({ ...boxForm, piso: event.target.value })} className="mt-1 block w-full border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900" />
+                </label>
+                <label className="text-xs font-bold uppercase text-slate-600">Capacidad
+                  <input required min="1" max="100" type="number" value={boxForm.capacidad} onChange={(event) => setBoxForm({ ...boxForm, capacidad: event.target.value })} className="mt-1 block w-full border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900" />
+                </label>
+              </div>
+              <button className="mt-4 inline-flex items-center gap-2 rounded-lg bg-slate-950 px-4 py-2.5 text-sm font-black text-white hover:bg-slate-800"><UserCheck size={16} />Guardar sala</button>
+            </form>
+          )}
+
           <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="grid grid-cols-[1.2fr_1fr_0.7fr_1.4fr_1fr_0.8fr] gap-4 border-b border-slate-200 bg-slate-50 px-5 py-4 text-xs font-black uppercase tracking-wider text-slate-500">
+            <div className="grid grid-cols-[1.1fr_1.25fr_0.8fr_0.55fr_1.3fr_0.85fr_0.9fr] gap-4 border-b border-slate-200 bg-slate-50 px-5 py-4 text-xs font-black uppercase tracking-wider text-slate-500">
               <span>Sala</span>
-              <span>Especialidad</span>
-              <span>Piso</span>
+              <span>Área / Especialidad</span>
+              <span>Capacidad</span>
               <span>Profesional</span>
               <span>Estado</span>
-              <span>Etiqueta QR</span>
+              <span>Acciones</span>
             </div>
             {visible.map((box) => {
               const allowedDoctors = doctors.filter((doc) => {
@@ -280,13 +407,13 @@ export default function PanelAdmin() {
                 return docSpec && box.especialidad?.nombre && docSpec.toLowerCase() === box.especialidad.nombre.toLowerCase()
               })
               return (
-                <div key={box.id} className="grid grid-cols-[1.2fr_1fr_0.7fr_1.4fr_1fr_0.8fr] items-center gap-4 border-b border-slate-100 px-5 py-4 last:border-0">
+                <div key={box.id} className="grid grid-cols-[1.1fr_1.25fr_0.8fr_0.55fr_1.3fr_0.85fr_0.9fr] items-center gap-4 border-b border-slate-100 px-5 py-4 last:border-0">
                   <div className="font-black">
                     Sala {box.numero}
                     <span className="block text-xs font-medium text-slate-400">{box.medico || 'Sin profesional'}</span>
                   </div>
-                  <span className="text-sm font-semibold text-slate-600">{box.especialidad?.nombre}</span>
-                  <span className="text-sm text-slate-500">{box.piso || '-'}</span>
+                  <div><span className="block text-sm font-semibold text-slate-700">{box.area || 'Sin área arquitectónica'}</span><span className="block text-xs text-slate-500">{box.especialidad?.nombre || 'Sin restricción'} · Piso {box.piso || '-'}</span></div>
+                  <span className="text-sm font-bold text-slate-700">{box.capacidad || 1} cupo{Number(box.capacidad || 1) === 1 ? '' : 's'}</span>
                   {box.estado === 'en_atencion' ? (
                     <button
                       onClick={() => releaseBox(box)}
@@ -315,12 +442,11 @@ export default function PanelAdmin() {
                       </option>
                     ))}
                   </select>
-                  <button
-                    onClick={() => setActiveQrBox(box)}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-teal-50 hover:text-teal-800 hover:border-teal-300"
-                  >
-                    <QrCode size={14} /> Imprimir QR
-                  </button>
+                  <div className="flex flex-wrap gap-2">
+                    <button onClick={() => openBoxEditor(box)} className="rounded-lg border border-slate-200 bg-slate-50 p-2 text-slate-700 hover:border-teal-300 hover:text-teal-800" title="Editar sala"><Pencil size={15} /></button>
+                    <button onClick={() => setActiveQrBox(box)} className="rounded-lg border border-slate-200 bg-slate-50 p-2 text-slate-700 hover:border-teal-300 hover:text-teal-800" title="Imprimir QR"><QrCode size={15} /></button>
+                    <button onClick={() => removeBox(box)} className="rounded-lg border border-rose-200 bg-rose-50 p-2 text-rose-700 hover:bg-rose-100" title="Eliminar sala"><Trash2 size={15} /></button>
+                  </div>
                 </div>
               )
             })}
@@ -366,6 +492,11 @@ export default function PanelAdmin() {
                     <option value="dermatologo">Dermatólogo / Dermatóloga</option>
                     <option value="cardiologo">Cardiólogo / Cardióloga</option>
                   </select>
+                </label>
+
+                <label className="mt-3 block text-xs font-bold text-slate-500 uppercase">
+                  Cargo visible en directorio:
+                  <input className="mt-1 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 font-semibold text-slate-900" placeholder="Ej: Enfermera clínica, Tecnólogo médico" value={form.cargo} onChange={(e) => setForm({ ...form, cargo: e.target.value })} />
                 </label>
 
                 <label className="mt-3 block text-xs font-bold text-slate-500 uppercase">
@@ -583,6 +714,7 @@ function Catalog({ title, items, type, onEdit, onRemove }) {
           <div key={item.id} className="flex items-center justify-between rounded-xl bg-slate-50 px-4 py-3 border border-slate-100">
             <div>
               <span className="font-bold text-slate-900">{item.nombre}</span>
+              {item.cargo && <span className="block text-xs font-semibold text-slate-600">{item.cargo}</span>}
               {item.especialidad_nombre && <span className="block text-xs font-semibold text-teal-700">Especialidad: {item.especialidad_nombre}</span>}
             </div>
             <div className="flex items-center gap-1">
@@ -866,7 +998,7 @@ function FloorSupervisorManager({ boxes, doctors, onRefresh, onNotify }) {
                         if (doc.activeBox?.atencion?.id) {
                           await finishAttention(doc.activeBox.atencion.id)
                         } else {
-                          await finishAttention(`demo-active-${doc.activeBox.id}`)
+                          await setBoxAvailability(doc.activeBox.id, 'disponible')
                         }
                         onRefresh?.()
                         onNotify?.(`Sala de ${doc.nombre} liberada por la supervisora.`)

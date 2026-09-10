@@ -1,6 +1,11 @@
 create table especialidades (id serial primary key, nombre text not null unique);
-create table medicos (id serial primary key, nombre text not null, tipo text not null default 'medico' check (tipo in ('medico','kinesiologo','dermatologo','cardiologo','otro')), especialidad_id int references especialidades(id) on delete set null);
-create table boxes (id serial primary key, numero text not null unique, piso int, especialidad_id int references especialidades(id) on delete set null, estado text default 'disponible' check (estado in ('disponible','en_atencion','fuera_servicio')));
+create table medicos (id serial primary key, nombre text not null, tipo text not null default 'medico' check (tipo in ('medico','kinesiologo','dermatologo','cardiologo','otro')), cargo text, especialidad_id int references especialidades(id) on delete set null);
+alter table medicos add column if not exists cargo text;
+create table boxes (id serial primary key, numero text not null unique, piso int, sector text, area text, capacidad int not null default 1 check (capacidad > 0), asignado_medico_id int references medicos(id) on delete set null, especialidad_id int references especialidades(id) on delete set null, estado text default 'disponible' check (estado in ('disponible','en_atencion','fuera_servicio')));
+alter table boxes add column if not exists area text;
+alter table boxes add column if not exists sector text;
+alter table boxes add column if not exists capacidad int not null default 1 check (capacidad > 0);
+alter table boxes add column if not exists asignado_medico_id int references medicos(id) on delete set null;
 create table turnos (id serial primary key, box_id int references boxes(id) on delete cascade, medico_id int references medicos(id) on delete set null, hora_inicio time, hora_fin time, dia_semana text);
 create table atenciones (id serial primary key, box_id int references boxes(id) on delete cascade, medico_id int references medicos(id) on delete set null, hora_entrada timestamptz default now(), hora_salida timestamptz);
 create table avisos (id bigint generated always as identity primary key, tipo text not null check (tipo in ('llamado','supervisora')), payload jsonb not null, creado_en timestamptz default now());

@@ -11,3 +11,7 @@ yarn-error.log*
 .vscode/
 .DS_Store
 Thumbs.db
+.vercel
+*.pdf
+WhatsApp*.jpeg
+private-assets/
