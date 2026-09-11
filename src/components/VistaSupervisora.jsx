@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ArrowLeft, BellRing, Building2, Crown, DoorOpen, HeartPulse, MapPin, Radio, ShieldCheck, Stethoscope, UserCheck, UserX } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, BellRing, Building2, Clock3, Crown, DoorOpen, HeartPulse, MapPin, Radio, ShieldCheck, Stethoscope, UserCheck, UserX } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { finishAttention, getMedicalLeaves, loadBoxes, loadDoctors, reportMedicalLeave, setBoxAvailability, startAttention, triggerSupervisorNotice } from '../lib/dataService'
 import { hasSupabase, supabase } from '../lib/supabaseClient'
@@ -68,6 +68,22 @@ export default function VistaSupervisora() {
 
   const occupiedCount = roster.filter((r) => r.isOccupied).length
   const availableBoxesCount = boxes.filter((b) => b.estado === 'disponible').length
+  const outOfServiceCount = boxes.filter((b) => b.estado === 'fuera_servicio').length
+  const unassignedProfessionals = roster.filter((person) => !person.activeBox && !person.hasLeave).length
+  const prolongedBoxes = boxes.filter((box) => {
+    if (box.estado !== 'en_atencion' || !box.horaEntrada) return false
+    return (Date.now() - new Date(box.horaEntrada).getTime()) / 60000 >= 35
+  })
+  const areaSummary = boxes.reduce((summary, box) => {
+    const area = box.area || 'Sin área'
+    const current = summary[area] || { total: 0, available: 0, occupied: 0, outOfService: 0 }
+    current.total += 1
+    if (box.estado === 'disponible') current.available += 1
+    if (box.estado === 'en_atencion') current.occupied += 1
+    if (box.estado === 'fuera_servicio') current.outOfService += 1
+    summary[area] = current
+    return summary
+  }, {})
 
   async function sendNotice(msgText) {
     if (!msgText.trim()) return
@@ -127,7 +143,7 @@ export default function VistaSupervisora() {
       </header>
 
       {/* KPI Cards */}
-      <div className="mx-auto mt-6 grid max-w-7xl gap-4 sm:grid-cols-3">
+      <div className="mx-auto mt-6 grid max-w-7xl gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs flex items-center justify-between">
           <div>
             <span className="text-xs font-black uppercase tracking-wider text-slate-500">Personal en Sala</span>
@@ -159,12 +175,74 @@ export default function VistaSupervisora() {
             <Building2 size={24} />
           </div>
         </div>
+
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs flex items-center justify-between">
+          <div>
+            <span className="text-xs font-black uppercase tracking-wider text-slate-500">Fuera de servicio</span>
+            <p className="text-3xl font-black text-slate-900 mt-1">{outOfServiceCount}</p>
+          </div>
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-50 text-amber-600">
+            <AlertTriangle size={24} />
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs flex items-center justify-between">
+          <div>
+            <span className="text-xs font-black uppercase tracking-wider text-slate-500">Atenciones prolongadas</span>
+            <p className="text-3xl font-black text-slate-900 mt-1">{prolongedBoxes.length}</p>
+          </div>
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-rose-50 text-rose-600">
+            <Clock3 size={24} />
+          </div>
+        </div>
       </div>
 
       {loading ? (
         <div className="mx-auto mt-10 max-w-7xl text-center font-bold text-slate-500">Cargando ubicación de personal...</div>
       ) : (
         <section className="mx-auto mt-8 max-w-7xl space-y-8">
+          <div className="grid gap-6 lg:grid-cols-[1.25fr_0.75fr]">
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+                <div>
+                  <h2 className="text-xl font-black text-slate-900">Estado por área</h2>
+                  <p className="mt-1 text-xs font-semibold text-slate-500">Carga actual de boxes por sector asistencial.</p>
+                </div>
+                <Building2 size={20} className="text-teal-700" />
+              </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                {Object.entries(areaSummary).map(([area, summary]) => (
+                  <div key={area} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="text-xs font-black uppercase tracking-wide text-slate-700">{area}</p>
+                      <span className="text-sm font-black text-slate-900">{summary.occupied}/{summary.total}</span>
+                    </div>
+                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200">
+                      <div className="h-full bg-teal-700 transition-all" style={{ width: `${summary.total ? (summary.occupied / summary.total) * 100 : 0}%` }} />
+                    </div>
+                    <p className="mt-2 text-[11px] font-bold text-slate-500">{summary.available} libres · {summary.outOfService} fuera de servicio</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+                <div>
+                  <h2 className="text-xl font-black text-slate-900">Alertas operativas</h2>
+                  <p className="mt-1 text-xs font-semibold text-slate-500">Situaciones que requieren revisión.</p>
+                </div>
+                <AlertTriangle size={20} className="text-amber-600" />
+              </div>
+              <div className="mt-4 space-y-3 text-sm font-bold">
+                {prolongedBoxes.length > 0 && <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-rose-800">{prolongedBoxes.length} box(es) con atención de más de 35 minutos.</div>}
+                {outOfServiceCount > 0 && <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-800">{outOfServiceCount} box(es) fuera de servicio.</div>}
+                {unassignedProfessionals > 0 && <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-slate-700">{unassignedProfessionals} profesional(es) sin sala activa.</div>}
+                {prolongedBoxes.length === 0 && outOfServiceCount === 0 && unassignedProfessionals === 0 && <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-emerald-800">Operación dentro de parámetros normales.</div>}
+              </div>
+            </div>
+          </div>
+
           {/* Broadcast Notices Control Panel */}
           <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
             <div className="flex items-center gap-3">
