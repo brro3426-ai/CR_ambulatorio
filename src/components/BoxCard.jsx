@@ -50,6 +50,7 @@ export default function BoxCard({
   piso = null,
   onClick,
   isDarkMode = false,
+  compact = false,
 }) {
   const [, setNow] = useState(Date.now())
   useEffect(() => {
@@ -62,6 +63,28 @@ export default function BoxCard({
   const cardTheme = isDarkMode ? current.darkClass : current.lightClass
   const Icon = current.icon
   const timeInfo = estado === 'en_atencion' ? elapsedTimeInfo(horaEntrada) : null
+
+  if (compact) {
+    return (
+      <article className={`relative flex min-h-28 flex-col justify-between overflow-hidden rounded-md border bg-white p-4 shadow-sm ${estado === 'en_atencion' ? 'border-rose-300' : estado === 'fuera_servicio' ? 'border-slate-300 bg-slate-50' : 'border-slate-200'}`}>
+        <div className={`absolute inset-x-0 top-0 h-1 ${current.dot}`} />
+        <div className="flex items-start justify-between gap-3 pt-1">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Box</p>
+            <h3 className="mt-0.5 text-2xl font-black tracking-tight text-slate-950">{numero}</h3>
+          </div>
+          <span className={`rounded-sm px-2 py-1 text-[10px] font-black uppercase tracking-wide ${current.badgeClass}`}>
+            {estado === 'en_atencion' ? 'Ocupado' : estado === 'fuera_servicio' ? 'Fuera de servicio' : 'Disponible'}
+          </span>
+        </div>
+        <div className="mt-2 flex items-center justify-between gap-2 border-t border-slate-100 pt-2 text-[11px] font-bold text-slate-500">
+          <span>{piso ? `Piso ${piso}` : 'Atención ambulatoria'}</span>
+          {estado === 'en_atencion' && <span className="text-rose-700">En atención</span>}
+          {estado === 'disponible' && <span className="text-emerald-700">Sala libre</span>}
+        </div>
+      </article>
+    )
+  }
 
   return (
     <article

@@ -147,13 +147,13 @@ export default function PantallaPublica() {
         <section className="mx-auto max-w-7xl space-y-10 py-8">
           {Object.entries(grouped).map(([specialty, items]) => (
             <div key={specialty}>
-              <div className="mb-4 flex items-center justify-between">
+              <div className="mb-3 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <h2 className="text-xl font-black tracking-tight text-slate-900">{specialty}</h2>
                   <span className="rounded-sm bg-slate-200 px-2.5 py-1 text-xs font-black text-slate-600">{items.length} boxes</span>
                 </div>
               </div>
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
                 {items.map((box) => (
                   <div key={box.id} className="relative">
                     <BoxCard
@@ -166,6 +166,7 @@ export default function PantallaPublica() {
                       proximoMedico={box.proximoMedico}
                       piso={box.piso}
                       isDarkMode={false}
+                      compact
                     />
                   </div>
                 ))}
