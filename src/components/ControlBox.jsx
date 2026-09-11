@@ -323,7 +323,7 @@ export default function ControlBox() {
   if (!hasSupabase && !demoMode) {
     return (
       <main className="grid min-h-screen place-items-center bg-[#f6f7f3] p-5">
-        <div className="w-full max-w-lg rounded-3xl border border-amber-200 bg-white p-8 shadow-xl">
+        <div className="w-full max-w-lg rounded-md border border-amber-200 bg-white p-8 shadow-xl">
           <h1 className="text-2xl font-black text-slate-900">Portal no disponible</h1>
           <p className="mt-3 text-sm font-semibold text-slate-600">El portal oficial requiere conexión con Supabase.</p>
         </div>
@@ -334,7 +334,7 @@ export default function ControlBox() {
   if (hasSupabase && !session) {
     return (
       <main className="grid min-h-screen place-items-center bg-[#f6f7f3] p-5">
-        <form onSubmit={login} className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-8 shadow-xl">
+        <form onSubmit={login} className="w-full max-w-md rounded-md border border-slate-200 bg-white p-8 shadow-xl">
           <span className="text-[11px] font-black uppercase tracking-[0.2em] text-teal-700">Acceso institucional</span>
           <h1 className="mt-2 text-3xl font-black tracking-tight text-slate-900">Portal del Funcionario</h1>
           <p className="mt-2 text-sm font-semibold text-slate-500">Ingresa con tu cuenta institucional para ver solo tu sala y agenda.</p>
@@ -368,21 +368,21 @@ export default function ControlBox() {
           <ChevronLeft size={16} /> Ver Pantalla TV de Disponibilidad
         </Link>
 
-        <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-xl md:p-7">
+        <section className="rounded-md border border-slate-300 bg-white p-5 shadow-sm md:p-7">
           {/* Header Portal Móvil */}
           <div className="flex items-start justify-between border-b pb-5 border-slate-100">
             <div>
-              <span className="text-[11px] font-black uppercase tracking-[0.2em] text-teal-700">Acceso Móvil Personal</span>
+              <span className="text-[11px] font-black uppercase tracking-[0.2em] text-teal-700">Portal operativo</span>
               <h1 className="mt-1 text-2xl font-black tracking-tight text-slate-900 md:text-3xl">Portal del Funcionario</h1>
-              <p className="mt-0.5 text-xs font-semibold text-slate-500">Gestión de Agenda, Estado de Sala y Compañeros</p>
+              <p className="mt-0.5 text-xs font-semibold text-slate-500">Sala, agenda y estado de atención</p>
             </div>
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-teal-50 text-teal-700 shadow-xs">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md bg-teal-50 text-teal-700 shadow-xs">
               <Stethoscope size={24} />
             </div>
           </div>
 
           {/* Demo identity selector or authenticated professional identity */}
-          <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <div className="mt-5 rounded-md border border-slate-200 bg-slate-50 p-4">
             {demoMode ? (
               <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-600">
                 Identificación de Funcionario:
@@ -432,7 +432,7 @@ export default function ControlBox() {
           </div>
 
           {/* Navigation Tabs: Mi Sala & Agenda vs Ubicación de Compañeros */}
-          <nav className="mt-5 flex rounded-2xl bg-slate-100 p-1">
+          <nav className="mt-5 flex rounded-md bg-slate-100 p-1">
             <button
               onClick={() => setActiveTab('mi-sala')}
               className={`flex-1 rounded-xl py-2.5 text-xs font-black transition-all flex items-center justify-center gap-2 ${
@@ -476,9 +476,9 @@ export default function ControlBox() {
                     /* TIENE SALA ASIGNADA ACTIVA */
                     <div className="space-y-6">
                       {/* Tarjeta de Sala Asignada */}
-                      <div className="rounded-2xl border-2 border-teal-600 bg-teal-50/80 p-5 text-slate-900 shadow-md">
+                      <div className="rounded-md border border-teal-600 bg-teal-50/80 p-5 text-slate-900 shadow-sm">
                         <div className="flex items-center justify-between">
-                          <span className="inline-flex items-center gap-1.5 rounded-full bg-teal-700 px-3 py-1 text-xs font-black text-white uppercase">
+                          <span className="inline-flex items-center gap-1.5 rounded-sm bg-teal-700 px-3 py-1 text-xs font-black text-white uppercase">
                             <UserCheck size={14} /> Sala Asignada
                           </span>
                           <span className="text-xs font-extrabold text-teal-900">Piso {assignedBox.piso || '-'}</span>
@@ -495,7 +495,7 @@ export default function ControlBox() {
                         </div>
 
                         {/* Control Rápido de Estado en Tiempo Real (Disponible vs En Atención) */}
-                        <div className="mt-5 rounded-2xl bg-white p-4 border border-teal-200 shadow-2xs">
+                        <div className="mt-5 rounded-md bg-white p-4 border border-teal-200 shadow-2xs">
                           <span className="text-[11px] font-black uppercase tracking-wider text-slate-500 block">
                             Estado en Vivo en Pantallas del Hospital:
                           </span>
@@ -510,7 +510,7 @@ export default function ControlBox() {
                               }`}
                             >
                               <span className="h-2.5 w-2.5 rounded-full bg-emerald-300" />
-                              🟢 Disponible (Listo / Esperando)
+                              Disponible (Listo / Esperando)
                             </button>
 
                             <button
@@ -522,7 +522,7 @@ export default function ControlBox() {
                               }`}
                             >
                               <span className="h-2.5 w-2.5 rounded-full bg-teal-300 animate-pulse" />
-                              🔴 En Atención (Con Paciente)
+                              En atención (con paciente)
                             </button>
                           </div>
 
@@ -543,7 +543,7 @@ export default function ControlBox() {
                             </div>
                             <h3 className="text-lg font-black text-slate-900 mt-0.5">Control de Citas y Turnos</h3>
                           </div>
-                          <button
+                            <button
                             onClick={() => setShowAddModal(true)}
                             className="flex items-center gap-1.5 rounded-xl bg-teal-700 px-3.5 py-2 text-xs font-black text-white hover:bg-teal-800 transition-colors shadow-xs"
                           >
