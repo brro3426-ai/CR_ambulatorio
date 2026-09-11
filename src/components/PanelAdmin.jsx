@@ -749,6 +749,49 @@ function Report({ title, items }) {
 function ShiftManager({ shifts, boxes, doctors, onSave, onRemove }) {
   const [form, setForm] = useState({ box_id: '', medico_id: '', dia_semana: 'lunes', hora_inicio: '08:00', hora_fin: '14:00' })
   const [editing, setEditing] = useState(null)
+  const morningShifts = shifts.filter((shift) => (shift.hora_inicio || '00:00') < '12:00')
+  const afternoonShifts = shifts.filter((shift) => (shift.hora_inicio || '00:00') >= '12:00')
+
+  function ShiftList({ title, items }) {
+    return (
+      <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
+        <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+          <h3 className="text-sm font-black uppercase tracking-[0.16em] text-slate-700">{title}</h3>
+          <span className="rounded-sm bg-white px-2 py-1 text-xs font-black text-slate-500">{items.length} turnos</span>
+        </div>
+        <div className="mt-3 space-y-3">
+          {items.length === 0 ? (
+            <p className="py-5 text-center text-xs font-semibold text-slate-400">No hay turnos configurados.</p>
+          ) : items.map((shift) => (
+            <div key={shift.id} className="flex items-center justify-between rounded-md border border-slate-200 bg-white p-4 font-semibold shadow-sm">
+              <div>
+                <b>{shift.box}</b> · {shift.doctor}
+                <span className="block text-sm text-slate-500">
+                  {shift.dia_semana} · {shift.hora_inicio} a {shift.hora_fin}
+                </span>
+              </div>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => {
+                    setEditing(shift.id)
+                    setForm({ box_id: shift.box_id || '', medico_id: shift.medico_id || '', dia_semana: shift.dia_semana, hora_inicio: shift.hora_inicio, hora_fin: shift.hora_fin })
+                  }}
+                  className="p-2 text-slate-500 hover:text-slate-900"
+                  title="Editar"
+                >
+                  <Pencil size={16} />
+                </button>
+                <button onClick={() => onRemove(shift)} className="p-2 text-rose-500 hover:text-rose-700" title="Eliminar">
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <section className="mx-auto mt-7 max-w-7xl rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <h2 className="text-xl font-black">Turnos configurados</h2>
@@ -781,32 +824,9 @@ function ShiftManager({ shifts, boxes, doctors, onSave, onRemove }) {
         <input type="time" value={form.hora_fin} onChange={(e) => setForm({ ...form, hora_fin: e.target.value })} className="rounded-lg border border-slate-200 px-3 py-2" />
         <button className="rounded-lg bg-teal-700 px-4 py-2 font-bold text-white hover:bg-teal-800">{editing ? 'Actualizar' : 'Crear turno'}</button>
       </form>
-      <div className="mt-6 grid gap-3 md:grid-cols-2">
-        {shifts.map((shift) => (
-          <div key={shift.id} className="flex items-center justify-between rounded-xl bg-slate-50 p-4 font-semibold border border-slate-100">
-            <div>
-              <b>{shift.box}</b> · {shift.doctor}
-              <span className="block text-sm text-slate-500">
-                {shift.dia_semana} · {shift.hora_inicio} a {shift.hora_fin}
-              </span>
-            </div>
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => {
-                  setEditing(shift.id)
-                  setForm({ box_id: shift.box_id || '', medico_id: shift.medico_id || '', dia_semana: shift.dia_semana, hora_inicio: shift.hora_inicio, hora_fin: shift.hora_fin })
-                }}
-                className="p-2 text-slate-500 hover:text-slate-900"
-                title="Editar"
-              >
-                <Pencil size={16} />
-              </button>
-              <button onClick={() => onRemove(shift)} className="p-2 text-rose-500 hover:text-rose-700" title="Eliminar">
-                <Trash2 size={16} />
-              </button>
-            </div>
-          </div>
-        ))}
+      <div className="mt-6 grid gap-4 md:grid-cols-2">
+        <ShiftList title="Turnos AM" items={morningShifts} />
+        <ShiftList title="Turnos PM" items={afternoonShifts} />
       </div>
     </section>
   )
