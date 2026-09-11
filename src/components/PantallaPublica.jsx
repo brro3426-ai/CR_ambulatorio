@@ -5,11 +5,13 @@ import { hasSupabase, supabase } from '../lib/supabaseClient'
 import { loadPublicBoxes } from '../lib/dataService'
 
 export default function PantallaPublica() {
+  const PUBLIC_PAGE_SIZE = 8
   const [boxes, setBoxes] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [time, setTime] = useState(new Date())
   const [activeSpecialtyIndex, setActiveSpecialtyIndex] = useState(0)
+  const [activePageIndex, setActivePageIndex] = useState(0)
   const previousBoxesRef = useRef([])
 
   // Live Digital Clock
@@ -106,16 +108,24 @@ export default function PantallaPublica() {
 
   const specialties = useMemo(() => [...new Set(boxes.map((box) => box.especialidad?.nombre).filter(Boolean))], [boxes])
   const activeSpecialty = specialties[activeSpecialtyIndex] || specialties[0]
-  const visible = boxes.filter((box) => box.especialidad?.nombre === activeSpecialty)
+  const specialtyBoxes = boxes.filter((box) => box.especialidad?.nombre === activeSpecialty)
+  const visible = specialtyBoxes.slice(activePageIndex * PUBLIC_PAGE_SIZE, (activePageIndex + 1) * PUBLIC_PAGE_SIZE)
   const available = visible.filter((box) => box.estado === 'disponible').length
   const inAttention = visible.filter((box) => box.estado === 'en_atencion').length
 
   useEffect(() => {
     if (specialties.length < 2) return undefined
-    setActiveSpecialtyIndex((current) => current % specialties.length)
-    const timer = setInterval(() => setActiveSpecialtyIndex((current) => (current + 1) % specialties.length), 15000)
+    setActivePageIndex(0)
+    const timer = setInterval(() => {
+      setActivePageIndex((currentPage) => {
+        const currentCount = boxes.filter((box) => box.especialidad?.nombre === specialties[activeSpecialtyIndex]).length
+        if ((currentPage + 1) * PUBLIC_PAGE_SIZE < currentCount) return currentPage + 1
+        setActiveSpecialtyIndex((currentSpecialty) => (currentSpecialty + 1) % specialties.length)
+        return 0
+      })
+    }, 15000)
     return () => clearInterval(timer)
-  }, [specialties.length])
+  }, [boxes, specialties, activeSpecialtyIndex])
 
   const grouped = visible.reduce((groups, box) => {
     const key = box.especialidad?.nombre || 'Sin especialidad'
@@ -135,7 +145,6 @@ export default function PantallaPublica() {
             CR Ambulatorio · Tótem TV
           </div>
             <h1 className="text-3xl font-black tracking-tight md:text-5xl">Disponibilidad de Salas</h1>
-          <p className="mt-3 text-base text-slate-500">Disponibilidad en tiempo real</p>
         </div>
 
         {/* PRO Kiosk Controls Bar */}
@@ -157,9 +166,9 @@ export default function PantallaPublica() {
           <p className="text-xs font-black uppercase tracking-[0.16em] text-teal-700">Área en pantalla</p>
           <h2 className="mt-1 text-2xl font-black text-slate-950">{activeSpecialty || 'Cargando áreas'}</h2>
         </div>
-        <div className="text-right text-sm font-bold text-slate-500">
+          <div className="text-right text-sm font-bold text-slate-500">
           <span className="text-slate-950">{available}</span> libres · <span className="text-slate-950">{inAttention}</span> en atención
-          <div className="mt-1 text-xs font-semibold">Vista {specialties.length ? activeSpecialtyIndex + 1 : 0} de {specialties.length}</div>
+          <div className="mt-1 text-xs font-semibold">Bloque {specialtyBoxes.length ? activePageIndex + 1 : 0} de {specialtyBoxes.length ? Math.ceil(specialtyBoxes.length / PUBLIC_PAGE_SIZE) : 0}</div>
         </div>
       </div>
 
@@ -213,10 +222,6 @@ export default function PantallaPublica() {
         </section>
       )}
 
-      <footer className="mx-auto mt-8 flex max-w-7xl items-center gap-2 border-t border-slate-300 pt-5 text-xs font-semibold text-slate-500">
-        <ShieldCheck size={16} className="shrink-0 text-teal-600" />
-        <span>Pantalla pública protegida: muestra solo disponibilidad de boxes. No expone pacientes, agendas ni datos clínicos.</span>
-      </footer>
     </main>
   )
 }
