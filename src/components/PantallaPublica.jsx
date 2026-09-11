@@ -28,6 +28,35 @@ export default function PantallaPublica() {
 
   useEffect(() => {
     let mounted = true
+    let channel = null
+    let reconnectTimer = null
+
+    const reconnectRealtime = () => {
+      if (!mounted || !hasSupabase) return
+      if (reconnectTimer) window.clearTimeout(reconnectTimer)
+      reconnectTimer = window.setTimeout(() => {
+        if (!mounted) return
+        if (channel) supabase.removeChannel(channel)
+        channel = supabase
+          .channel(`availability-live-${Date.now()}`)
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'boxes' }, reloadData)
+          .subscribe((status) => {
+            if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') reconnectRealtime()
+          })
+      }, 1000)
+    }
+
+    const handleConnectionChange = () => {
+      if (navigator.onLine) {
+        reloadData()
+        reconnectRealtime()
+      }
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') handleConnectionChange()
+    }
+
     loadPublicBoxes()
       .then((data) => {
         if (mounted) {
@@ -55,15 +84,23 @@ export default function PantallaPublica() {
       }
     }
 
-    const channel = supabase
+    channel = supabase
       .channel('availability-live')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'boxes' }, reloadData)
-    .subscribe()
+    .subscribe((status) => {
+      if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') reconnectRealtime()
+    })
+
+    window.addEventListener('online', handleConnectionChange)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
 
     return () => {
       mounted = false
       clearInterval(timer)
-      supabase.removeChannel(channel)
+      if (reconnectTimer) window.clearTimeout(reconnectTimer)
+      window.removeEventListener('online', handleConnectionChange)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      if (channel) supabase.removeChannel(channel)
     }
   }, [])
 
