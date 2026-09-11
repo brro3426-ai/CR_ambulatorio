@@ -9,16 +9,21 @@ export default function VistaSupervisora() {
   const [doctors, setDoctors] = useState([])
   const [medicalLeaves, setMedicalLeaves] = useState(() => getMedicalLeaves())
   const [loading, setLoading] = useState(true)
+  const [lastUpdatedAt, setLastUpdatedAt] = useState(null)
+  const [dataError, setDataError] = useState('')
   const [customNotice, setCustomNotice] = useState('')
   const [noticeSent, setNoticeSent] = useState('')
 
   const refreshData = () => {
     Promise.all([loadBoxes(), loadDoctors()])
       .then(([loadedBoxes, loadedDoctors]) => {
+        setDataError('')
         setBoxes(loadedBoxes)
         setDoctors(loadedDoctors)
         setMedicalLeaves(getMedicalLeaves())
+        setLastUpdatedAt(Date.now())
       })
+      .catch((error) => setDataError(error.message || 'No se pudo actualizar la operación.'))
       .finally(() => setLoading(false))
   }
 
@@ -84,6 +89,9 @@ export default function VistaSupervisora() {
     summary[area] = current
     return summary
   }, {})
+  const secondsSinceUpdate = lastUpdatedAt ? Math.max(0, Math.floor((Date.now() - lastUpdatedAt) / 1000)) : null
+  const connectionLabel = dataError ? 'Revisar conexión' : lastUpdatedAt ? 'En línea' : 'Conectando'
+  const connectionClass = dataError ? 'text-rose-700' : 'text-teal-700'
 
   async function sendNotice(msgText) {
     if (!msgText.trim()) return
@@ -166,10 +174,13 @@ export default function VistaSupervisora() {
 
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs flex items-center justify-between">
           <div>
-            <span className="text-xs font-black uppercase tracking-wider text-slate-500">Estado de Red</span>
-            <p className="text-base font-black text-teal-700 mt-1 flex items-center gap-1.5">
-              <ShieldCheck size={18} /> {hasSupabase ? 'Supabase Realtime' : 'Modo Simulación Activo'}
+              <span className="text-xs font-black uppercase tracking-wider text-slate-500">Estado de conexión</span>
+            <p className={`text-base font-black mt-1 flex items-center gap-1.5 ${connectionClass}`}>
+              <ShieldCheck size={18} /> {connectionLabel}
             </p>
+            <span className="mt-1 block text-[11px] font-semibold text-slate-500">
+              {secondsSinceUpdate === null ? 'Comprobando datos' : `Última actualización: hace ${secondsSinceUpdate} s`}
+            </span>
           </div>
           <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-teal-50 text-teal-700">
             <Building2 size={24} />
