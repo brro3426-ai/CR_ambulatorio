@@ -66,7 +66,7 @@ export default function BoxCard({
 
   if (compact) {
     return (
-      <article className={`relative flex min-h-28 flex-col justify-between overflow-hidden rounded-md border bg-white p-4 shadow-sm ${estado === 'en_atencion' ? 'border-rose-300' : estado === 'fuera_servicio' ? 'border-slate-300 bg-slate-50' : 'border-slate-200'}`}>
+      <article className={`relative flex min-h-40 flex-col justify-between overflow-hidden rounded-md border bg-white p-5 shadow-sm ${estado === 'en_atencion' ? 'border-rose-300' : estado === 'fuera_servicio' ? 'border-slate-300 bg-slate-50' : 'border-slate-200'}`}>
         <div className={`absolute inset-x-0 top-0 h-1 ${current.dot}`} />
         <div className="flex items-start justify-between gap-3 pt-1">
           <div>

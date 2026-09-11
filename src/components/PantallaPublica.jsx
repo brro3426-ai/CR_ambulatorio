@@ -5,7 +5,6 @@ import { hasSupabase, supabase } from '../lib/supabaseClient'
 import { loadPublicBoxes } from '../lib/dataService'
 
 export default function PantallaPublica() {
-  const PUBLIC_PAGE_SIZE = 8
   const [boxes, setBoxes] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -107,9 +106,11 @@ export default function PantallaPublica() {
   }, [])
 
   const specialties = useMemo(() => [...new Set(boxes.map((box) => box.especialidad?.nombre).filter(Boolean))], [boxes])
+  const specialtyKey = specialties.join('|')
   const activeSpecialty = specialties[activeSpecialtyIndex] || specialties[0]
   const specialtyBoxes = boxes.filter((box) => box.especialidad?.nombre === activeSpecialty)
-  const visible = specialtyBoxes.slice(activePageIndex * PUBLIC_PAGE_SIZE, (activePageIndex + 1) * PUBLIC_PAGE_SIZE)
+  const pageSize = specialtyBoxes.length > 8 ? Math.ceil(specialtyBoxes.length / 2) : Math.max(specialtyBoxes.length, 1)
+  const visible = specialtyBoxes.slice(activePageIndex * pageSize, (activePageIndex + 1) * pageSize)
   const available = visible.filter((box) => box.estado === 'disponible').length
   const inAttention = visible.filter((box) => box.estado === 'en_atencion').length
 
@@ -119,13 +120,14 @@ export default function PantallaPublica() {
     const timer = setInterval(() => {
       setActivePageIndex((currentPage) => {
         const currentCount = boxes.filter((box) => box.especialidad?.nombre === specialties[activeSpecialtyIndex]).length
-        if ((currentPage + 1) * PUBLIC_PAGE_SIZE < currentCount) return currentPage + 1
+        const currentPageSize = currentCount > 8 ? Math.ceil(currentCount / 2) : Math.max(currentCount, 1)
+        if ((currentPage + 1) * currentPageSize < currentCount) return currentPage + 1
         setActiveSpecialtyIndex((currentSpecialty) => (currentSpecialty + 1) % specialties.length)
         return 0
       })
     }, 15000)
     return () => clearInterval(timer)
-  }, [boxes, specialties, activeSpecialtyIndex])
+  }, [specialtyKey, activeSpecialtyIndex])
 
   const grouped = visible.reduce((groups, box) => {
     const key = box.especialidad?.nombre || 'Sin especialidad'
@@ -168,7 +170,7 @@ export default function PantallaPublica() {
         </div>
           <div className="text-right text-sm font-bold text-slate-500">
           <span className="text-slate-950">{available}</span> libres · <span className="text-slate-950">{inAttention}</span> en atención
-          <div className="mt-1 text-xs font-semibold">Bloque {specialtyBoxes.length ? activePageIndex + 1 : 0} de {specialtyBoxes.length ? Math.ceil(specialtyBoxes.length / PUBLIC_PAGE_SIZE) : 0}</div>
+          <div className="mt-1 text-xs font-semibold">Bloque {specialtyBoxes.length ? activePageIndex + 1 : 0} de {specialtyBoxes.length ? Math.ceil(specialtyBoxes.length / pageSize) : 0}</div>
         </div>
       </div>
 
