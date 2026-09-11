@@ -852,88 +852,28 @@ function FloorSupervisorManager({ boxes, doctors, onRefresh, onNotify }) {
   return (
     <section className="mx-auto mt-7 max-w-7xl space-y-7">
       {/* Supervisor Header Banner */}
-      <div className="rounded-3xl border border-teal-200 bg-gradient-to-r from-teal-900 to-slate-900 p-6 md:p-8 text-white shadow-xl flex flex-wrap items-center justify-between gap-6">
+      <div className="rounded-md border border-slate-300 bg-white p-5 md:p-6 text-slate-950 shadow-sm flex flex-wrap items-center justify-between gap-5">
         <div className="flex items-center gap-4">
-          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-teal-500 text-slate-950 shadow-lg">
-            <Crown size={36} />
+          <div className="flex h-12 w-12 items-center justify-center rounded-md bg-teal-700 text-white shadow-sm">
+            <Crown size={26} />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-xs font-black uppercase tracking-[0.25em] text-teal-300">Modulo de Control</span>
-              <span className="rounded-full bg-teal-800 px-2.5 py-0.5 text-[10px] font-black uppercase text-teal-200">Supervisora de Piso</span>
+              <span className="text-xs font-black uppercase tracking-[0.2em] text-teal-700">Jefatura de Piso</span>
+              <span className="rounded-sm bg-teal-50 px-2.5 py-0.5 text-[10px] font-black uppercase text-teal-800">Operación CR</span>
             </div>
-            <h2 className="text-3xl font-black tracking-tight mt-1">Localización y Control de Personal en Tiempo Real</h2>
-            <p className="text-xs font-semibold text-teal-200 mt-1">
-              Monitoreo centralizado: Sabe exactamente en qué sala está cada médico o kinesiólogo y emite avisos a los equipos.
-            </p>
+            <h2 className="text-2xl font-black tracking-tight mt-1">Control de operación</h2>
+            <p className="text-xs font-semibold text-slate-500 mt-1">Estado de boxes y ubicación del equipo asistencial.</p>
           </div>
         </div>
 
-        <div className="flex items-center gap-3 bg-white/10 rounded-2xl p-3 border border-white/10">
-          <UserCheck size={28} className="text-teal-400" />
+        <div className="flex items-center gap-3 rounded-md border border-slate-200 bg-slate-50 px-4 py-3">
+          <UserCheck size={24} className="text-teal-700" />
           <div>
-            <div className="text-2xl font-black">{occupiedCount} / {doctors.length}</div>
-            <div className="text-[10px] font-extrabold uppercase tracking-wider text-teal-200">Profesionales en Sala</div>
+            <div className="text-2xl font-black text-slate-950">{occupiedCount} / {doctors.length}</div>
+            <div className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">Profesionales en sala</div>
           </div>
         </div>
-      </div>
-
-      {/* Broadcast Notices Control Panel */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="flex items-center gap-2">
-          <Radio size={22} className="text-teal-700 animate-pulse" />
-          <h3 className="text-xl font-black text-slate-900">Centro de Notificaciones & Avisos Masivos a Pantallas</h3>
-        </div>
-        <p className="text-xs font-semibold text-slate-500 mt-1">
-          Envía comunicados instantáneos con señal sonora y voz a todas las pantallas TV del edificio y celulares de los boxes.
-        </p>
-
-        {/* Quick notice buttons */}
-        <div className="mt-4 flex flex-wrap gap-2">
-          {[
-            ' Alerta: Encargada de Piso requiere asistencia',
-            '📋 Recordatorio: Favor cerrar sesión al salir de sala',
-            '🕒 Cambio de Turno Clínico en progreso',
-            '☕ Inicio de Pausa de Almuerzo / Colación',
-          ].map((preset) => (
-            <button
-              key={preset}
-              onClick={() => sendNotice(preset)}
-              className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-800 hover:bg-teal-50 hover:text-teal-900 hover:border-teal-300 transition-colors"
-            >
-              {preset}
-            </button>
-          ))}
-        </div>
-
-        {/* Custom notice form */}
-        <form
-          onSubmit={(e) => {
-            e.preventDefault()
-            sendNotice(customNotice)
-          }}
-          className="mt-4 flex flex-wrap gap-3"
-        >
-          <input
-            type="text"
-            value={customNotice}
-            onChange={(e) => setCustomNotice(e.target.value)}
-            placeholder="Escribe un aviso personalizado para transmitir a todo el CR Ambulatorio..."
-            className="flex-1 rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-900 outline-none focus:border-teal-500"
-          />
-          <button
-            type="submit"
-            className="flex items-center gap-2 rounded-xl bg-teal-700 px-6 py-3 font-extrabold text-white shadow-md hover:bg-teal-800 transition-colors"
-          >
-            <BellRing size={18} /> Transmitir Aviso en Vivo
-          </button>
-        </form>
-
-        {noticeSent && (
-          <p className="mt-3 flex items-center gap-2 text-xs font-black text-emerald-700 bg-emerald-50 p-2.5 rounded-lg border border-emerald-200">
-            ✓ {noticeSent}
-          </p>
-        )}
       </div>
 
       {/* Live Professional Roster Grid (Where is each doctor/kinesiologist?) */}
